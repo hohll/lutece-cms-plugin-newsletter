@@ -34,8 +34,11 @@
 package fr.paris.lutece.plugins.newsletter.service;
 
 import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
@@ -187,7 +190,12 @@ public class NewsLetterRegistrationService
                 urlItem.addParameter( NewsLetterConstants.PARAMETER_USER_ID, subscriber.getId( ) );
                 NewsletterUtils.addParameters( urlItem, NewsLetterConstants.PARAMETER_NEWSLETTER_ID,
                         request.getParameterValues( NewsLetterConstants.PARAMETER_NEWSLETTER_ID ) );
-                Collection<NewsLetter> listNewsLetter = NewsLetterHome.findAll( PluginService.getPlugin( NewsletterPlugin.PLUGIN_NAME ) );
+                // The mail lists the newsletters chosen by the subscriber
+                List<String> listIdNewsLetterChosen = request.getParameterValues( NewsLetterConstants.PARAMETER_NEWSLETTER_ID ) != null
+                        ? Arrays.asList( request.getParameterValues( NewsLetterConstants.PARAMETER_NEWSLETTER_ID ) )
+                        : new ArrayList<>( );
+                Collection<NewsLetter> listNewsLetter = NewsLetterHome.findAll( PluginService.getPlugin( NewsletterPlugin.PLUGIN_NAME ) ).stream( )
+                        .filter( newsletter -> listIdNewsLetterChosen.contains( String.valueOf( newsletter.getId( ) ) ) ).toList( );
               // read css file
                 String strCss = AppTemplateService.getTemplate( CONFIRM_MAIL_CSS, getLocale( request ), null ).getHtml( );
 
@@ -274,7 +282,8 @@ public class NewsLetterRegistrationService
             // Checks if a subscriber with the same email address doesn't exist yet
             Subscriber subscriber = SubscriberHome.findByEmail( strEmail, _plugin );
 
-            if ( subscriber == null )
+            // The key is checked for the user id of the link: it must be the subscriber of the e-mail of the link
+            if ( subscriber == null || subscriber.getId( ) != nIdUser )
             {
                 SiteMessageService.setMessage( request, NewsLetterConstants.PROPERTY_SUBSCRIPTION_INVALID_USER_ERROR_MESSAGE,
                         NewsLetterConstants.PROPERTY_SUBSCRIPTION_INVALID_USER_TITLE_MESSAGE, SiteMessage.TYPE_STOP );
