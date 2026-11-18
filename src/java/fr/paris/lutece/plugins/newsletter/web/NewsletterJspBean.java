@@ -338,6 +338,7 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String LABEL_NEWSLETTER_TOPIC_SECTION = "newsletter.manage_topics.labelTopicSection";
     private static final String LABEL_NEWSLETTER_ACTION = "newsletter.manage_topics.labelActions";
     private static final String LABLE_COPY_NEWSLETTER_TITLE = "newsletter.manage_newsletters.copy.title";
+    private static final int NEWSLETTER_NAME_MAX_LENGTH = 50;
 
     private static final String PROPERTY_PAGE_TITLE_COMPOSE = "newsletter.compose_newsletter.pageTitle";
     private static final String PROPERTY_PAGE_TITLE_MODIFY = "newsletter.modify_newsletter.pageTitle";
@@ -2805,7 +2806,8 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
 
         if ( strTitleCopySuggest != null )
         {
-            newsletter.setName( strTitleCopySuggest );
+            // The name of the copy must fit in the column of the name
+            newsletter.setName( StringUtils.left( strTitleCopySuggest, NEWSLETTER_NAME_MAX_LENGTH ) );
         }
 
         // Copy of newsletter
