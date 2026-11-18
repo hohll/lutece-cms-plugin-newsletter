@@ -53,9 +53,9 @@ import java.util.Collection;
 public class NewsLetterDAO implements INewsLetterDAO
 {
     private static final String SQL_QUERY_SELECT = "SELECT name, description, date_last_send, html, id_newsletter_template, workgroup_key, unsubscribe, sender_mail, sender_name, test_recipients, test_subject, nb_sections  FROM newsletter_description WHERE id_newsletter = ? ";
-    private static final String SQL_QUERY_SELECT_ALL = "SELECT id_newsletter , name, description, date_last_send, html, id_newsletter_template, workgroup_key, test_recipients , sender_mail, sender_name, test_subject, nb_sections FROM newsletter_description ";
+    private static final String SQL_QUERY_SELECT_ALL = "SELECT id_newsletter , name, description, date_last_send, html, id_newsletter_template, workgroup_key, test_recipients , sender_mail, sender_name, test_subject, nb_sections, unsubscribe FROM newsletter_description ";
     private static final String SQL_QUERY_SELECT_ALL_ID = "SELECT id_newsletter, name FROM newsletter_description ";
-    private static final String SQL_QUERY_SELECT_ALL_BY_ID_TEMPLATE = "SELECT id_newsletter , name, description, date_last_send, html, id_newsletter_template, workgroup_key, test_recipients , sender_mail, sender_name, test_subject, nb_sections FROM newsletter_description WHERE id_newsletter_template = ? ";
+    private static final String SQL_QUERY_SELECT_ALL_BY_ID_TEMPLATE = "SELECT id_newsletter , name, description, date_last_send, html, id_newsletter_template, workgroup_key, test_recipients , sender_mail, sender_name, test_subject, nb_sections, unsubscribe FROM newsletter_description WHERE id_newsletter_template = ? ";
     private static final String SQL_QUERY_SELECT_NBR_SUBSCRIBERS = "SELECT count(*) FROM newsletter_subscriber a, newsletter_subscriber_details b WHERE a.id_subscriber = b.id_subscriber AND b.email LIKE ? AND id_newsletter = ? ";
     private static final String SQL_QUERY_SELECT_NBR_ACTIVE_SUBSCRIBERS = "SELECT count(*) FROM newsletter_subscriber a, newsletter_subscriber_details b WHERE a.id_subscriber = b.id_subscriber AND b.email LIKE ? AND id_newsletter = ? AND a.confirmed = 1";
     private static final String SQL_QUERY_UPDATE = "UPDATE newsletter_description SET name = ?, description = ?, date_last_send = ?, html = ?, id_newsletter_template = ?, workgroup_key = ? , unsubscribe = ? ,sender_mail = ? ,sender_name = ? , test_recipients = ?, test_subject = ?, nb_sections = ? WHERE id_newsletter = ? ";
@@ -256,7 +256,8 @@ public class NewsLetterDAO implements INewsLetterDAO
                 newsLetter.setNewsletterSenderMail( daoUtil.getString( nIndex++ ) );
                 newsLetter.setNewsletterSenderName( daoUtil.getString( nIndex++ ) );
                 newsLetter.setTestSubject( daoUtil.getString( nIndex++ ) );
-                newsLetter.setNbSections( daoUtil.getInt( nIndex ) );
+                newsLetter.setNbSections( daoUtil.getInt( nIndex++ ) );
+                newsLetter.setUnsubscribe( daoUtil.getString( nIndex ) );
                 list.add( newsLetter );
             }
         }
@@ -313,7 +314,8 @@ public class NewsLetterDAO implements INewsLetterDAO
                 newsLetter.setNewsletterSenderMail( daoUtil.getString( nIndex++ ) );
                 newsLetter.setNewsletterSenderName( daoUtil.getString( nIndex++ ) );
                 newsLetter.setTestSubject( daoUtil.getString( nIndex++ ) );
-                newsLetter.setNbSections( daoUtil.getInt( nIndex ) );
+                newsLetter.setNbSections( daoUtil.getInt( nIndex++ ) );
+                newsLetter.setUnsubscribe( daoUtil.getString( nIndex ) );
                 list.add( newsLetter );
             }
         }
