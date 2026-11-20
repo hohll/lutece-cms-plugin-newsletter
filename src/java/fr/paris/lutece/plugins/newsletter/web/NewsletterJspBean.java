@@ -2289,7 +2289,7 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
         {
             tableManager = (DataTableManager<NewsletterTopic>) object;
             // If the table manager saved in session is not associated with this newsletter we create a new one
-            if ( !Objects.equals( tableManager.getSortUrl( ), url.getUrl( ) ) )
+            if ( !isTableManagerOfUrl( tableManager, url.getUrl( ) ) )
             {
                 tableManager = null;
             }
@@ -2813,5 +2813,22 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
         // Copy of newsletter
         getNewsletterService().copyExistingNewsletter( newsletter, user, locale );
         return getHomeUrl( request );
+    }
+
+    /**
+     * Tells if a table manager was built for a URL: the table manager adds its own id to the sort URL it is given
+     *
+     * @param tableManager
+     *            the table manager
+     * @param strUrl
+     *            the URL
+     * @return true if the sort URL of the table manager is the URL with the id of the table manager
+     */
+    static boolean isTableManagerOfUrl( DataTableManager<?> tableManager, String strUrl )
+    {
+        UrlItem urlOfTableManager = new UrlItem( strUrl );
+        urlOfTableManager.addParameter( tableManager.getId( ), tableManager.getId( ) );
+
+        return Objects.equals( tableManager.getSortUrl( ), urlOfTableManager.getUrl( ) );
     }
 }
