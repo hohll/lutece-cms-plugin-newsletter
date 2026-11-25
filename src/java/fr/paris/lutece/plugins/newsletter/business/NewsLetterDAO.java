@@ -123,7 +123,7 @@ public class NewsLetterDAO implements INewsLetterDAO
     @Override
     public NewsLetter load( int nNewsLetterId, Plugin plugin )
     {
-        NewsLetter newsLetter = new NewsLetter( );
+        NewsLetter newsLetter = null;
 
         try ( DAOUtil daoUtil = new DAOUtil( SQL_QUERY_SELECT, plugin ) )
         {
@@ -133,6 +133,7 @@ public class NewsLetterDAO implements INewsLetterDAO
             if ( daoUtil.next( ) )
             {
                 int nIndex = 1;
+                newsLetter = new NewsLetter( );
                 newsLetter.setId( nNewsLetterId );
                 newsLetter.setName( daoUtil.getString( nIndex++ ) );
                 newsLetter.setDescription( daoUtil.getString( nIndex++ ) );

@@ -110,7 +110,7 @@ public class SubscriberDAO implements ISubscriberDAO
      */
     public Subscriber load( int nId, Plugin plugin )
     {
-        Subscriber subscriber = new Subscriber( );
+        Subscriber subscriber = null;
 
         try ( DAOUtil daoUtil = new DAOUtil( SQL_QUERY_SELECT, plugin ) )
         {
@@ -119,6 +119,7 @@ public class SubscriberDAO implements ISubscriberDAO
 
             if ( daoUtil.next( ) )
             {
+                subscriber = new Subscriber( );
                 subscriber.setId( nId );
                 subscriber.setEmail( daoUtil.getString( 1 ) );
             }

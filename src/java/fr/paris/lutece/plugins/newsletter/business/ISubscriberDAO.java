@@ -69,7 +69,7 @@ public interface ISubscriberDAO
      *            the subscriber's identifier
      * @param plugin
      *            the Plugin
-     * @return an object Subscriber
+     * @return the subscriber, null when no subscriber has this identifier
      */
     Subscriber load( int nId, Plugin plugin );
 

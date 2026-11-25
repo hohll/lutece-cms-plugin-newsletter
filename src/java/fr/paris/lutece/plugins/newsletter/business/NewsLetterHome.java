@@ -112,7 +112,7 @@ public final class NewsLetterHome
      *            the primary key of the newsletter
      * @param plugin
      *            the Plugin
-     * @return an instance of the class
+     * @return the newsletter, null when no newsletter has this identifier
      */
     public static NewsLetter findByPrimaryKey( int nKey, Plugin plugin )
     {

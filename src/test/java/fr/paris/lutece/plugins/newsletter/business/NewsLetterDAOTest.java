@@ -85,4 +85,15 @@ public class NewsLetterDAOTest extends LuteceTestCase
             NewsLetterHome.remove( newsletter.getId( ), plugin );
         }
     }
+
+    /**
+     * An identifier that matches no newsletter gives null, which the screens and the actions read as an unknown newsletter
+     */
+    @Test
+    public void testUnknownNewsletterIsNull( )
+    {
+        Plugin plugin = PluginService.getPlugin( NewsletterPlugin.PLUGIN_NAME );
+
+        assertNull( NewsLetterHome.findByPrimaryKey( 987654321, plugin ) );
+    }
 }
