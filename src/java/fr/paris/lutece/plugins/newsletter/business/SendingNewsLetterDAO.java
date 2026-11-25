@@ -38,8 +38,11 @@ import fr.paris.lutece.util.sql.DAOUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Named;
 
+import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This class provides Data Access methods for SendingNewsLetter objects
@@ -56,6 +59,7 @@ public class SendingNewsLetterDAO implements ISendingNewsLetterDAO
     private static final String SQL_QUERY_UPDATE = "UPDATE newsletter_sending SET date_sending = ? WHERE id_sending = ?";
     private static final String SQL_QUERY_CHECK_PRIMARY_KEY = "SELECT id_sending FROM newsletter_sending WHERE id_sending = ?";
     private static final String SQL_QUERY_NEW_PRIMARY_KEY = "SELECT max(id_sending) FROM newsletter_sending ";
+    private static final String SQL_QUERY_COUNT_SENDINGS_BY_NEWSLETTER = "SELECT id_newsletter, COUNT(*), SUM( CASE WHEN date_sending >= ? THEN 1 ELSE 0 END ), MAX( date_sending ) FROM newsletter_sending GROUP BY id_newsletter";
 
     /**
      * Insert a new record in the table.
@@ -324,5 +328,27 @@ public class SendingNewsLetterDAO implements ISendingNewsLetterDAO
         }
 
         return results;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Map<Integer, SendingStatistics> selectSendingStatisticsByNewsletter( Timestamp dateRecent, Plugin plugin )
+    {
+        Map<Integer, SendingStatistics> mapCounts = new HashMap<>( );
+
+        try ( DAOUtil daoUtil = new DAOUtil( SQL_QUERY_COUNT_SENDINGS_BY_NEWSLETTER, plugin ) )
+        {
+            daoUtil.setTimestamp( 1, dateRecent );
+            daoUtil.executeQuery( );
+
+            while ( daoUtil.next( ) )
+            {
+                mapCounts.put( daoUtil.getInt( 1 ), new SendingStatistics( daoUtil.getInt( 2 ), daoUtil.getInt( 3 ), daoUtil.getTimestamp( 4 ) ) );
+            }
+        }
+
+        return mapCounts;
     }
 }

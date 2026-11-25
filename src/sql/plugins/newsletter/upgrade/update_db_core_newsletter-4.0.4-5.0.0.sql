@@ -57,3 +57,28 @@ DELETE FROM core_stylesheet WHERE id_stylesheet IN (400, 401);
 -- preconditions onFail:MARK_RAN onError:WARN
 UPDATE core_portlet_type SET create_specific = '/admin/plugins/newsletter/newsletter_sending_list.html' WHERE id_portlet_type = 'NEWSLETTER_ARCHIVE_PORTLET';
 UPDATE core_portlet_type SET create_specific = '/admin/plugins/newsletter/newsletter_subscription_list.html' WHERE id_portlet_type = 'NEWSLETTER_SUBSCRIPTION_PORTLET';
+
+-- changeset newsletter:update_db_core_newsletter-4.0.4-5.0.0.sql-rev6.sql
+-- preconditions onFail:MARK_RAN onError:WARN
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM core_admin_right WHERE id_right = 'NEWSLETTER_SUBSCRIBER_MANAGEMENT'
+--
+-- Feature of the management of the subscribers of all the newsletters
+--
+INSERT INTO core_admin_right (id_right,name,level_right,admin_url,description,is_updatable,plugin_name,id_feature_group,icon_url,documentation_url) VALUES ('NEWSLETTER_SUBSCRIBER_MANAGEMENT','newsletter.adminFeature.newsletter_subscriber_management.name',2,'jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp','newsletter.adminFeature.newsletter_subscriber_management.description',0,'newsletter','USERS','ti ti-users', NULL);
+INSERT INTO core_user_right (id_right,id_user) VALUES ('NEWSLETTER_SUBSCRIBER_MANAGEMENT',1);
+
+--
+-- The actions of the management of the subscribers of all the newsletters are granted by the RBAC resource type NEWSLETTER_SUBSCRIBER
+--
+-- changeset newsletter:update_db_core_newsletter-4.0.4-5.0.0.sql-rev7.sql
+-- preconditions onFail:MARK_RAN onError:WARN
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM core_admin_role_resource WHERE role_key = 'newsletter_manager' AND resource_type = 'NEWSLETTER_SUBSCRIBER'
+INSERT INTO core_admin_role_resource (role_key,resource_type,resource_id,permission) VALUES ('newsletter_manager','NEWSLETTER_SUBSCRIBER','*','*');
+
+--
+-- Dashboard of the subscriptions awaiting confirmation, shown to the administrators managing the subscribers
+--
+-- changeset newsletter:update_db_core_newsletter-4.0.4-5.0.0.sql-rev8.sql
+-- preconditions onFail:MARK_RAN onError:WARN
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM core_dashboard WHERE dashboard_name = 'NEWSLETTER_PENDING_SUBSCRIPTIONS'
+INSERT INTO core_dashboard(dashboard_name, dashboard_column, dashboard_order) VALUES('NEWSLETTER_PENDING_SUBSCRIPTIONS', 2, 10);

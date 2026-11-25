@@ -1,5 +1,6 @@
+<@input type='hidden' name='token' value='${token!}' />
 <@listGroup>
 <#list subscribed_newsletter_list as subscribed>
-<@listGroupItem><@checkBox orientation='switch' name='cbx_snd_${subscribed.id}' labelClass='fs-3 ms-3' checked=selected_newsletter_list?seq_contains(subscribed.id)><strong>${subscribed.name}</strong><br><small>#i18n{newsletter.newsletter_subscription_list.labelDateSent} : ${subscribed.dateLastSending}</small></@checkBox></@listGroupItem>
+<@listGroupItem><@checkBox orientation='switch' value='1' name='cbx_snd_${subscribed.id?c}' labelClass='fs-3 ms-3' checked=selected_newsletter_list?seq_contains(subscribed.id)><strong>${subscribed.name}</strong><br><small>#i18n{newsletter.newsletter_subscription_list.labelDateSent} : ${subscribed.dateLastSending}</small></@checkBox></@listGroupItem>
 </#list>
 </@listGroup>

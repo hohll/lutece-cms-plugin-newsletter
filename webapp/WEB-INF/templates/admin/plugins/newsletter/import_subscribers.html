@@ -1,42 +1,96 @@
-<#if import_delete?has_content && import_delete>
-<#assign boxTitle  = '#i18n{newsletter.import_delete_subscribers.boxTitle}' />
-<#assign alertTitle = '#i18n{newsletter.import_delete_subscribers.notice1}' />
-<#else>
-<#assign boxTitle = '#i18n{newsletter.import_subscribers.boxTitle}' />
-<#assign alertTitle = '#i18n{newsletter.import_subscribers.notice1}' />
-</#if>
+<#include "/admin/plugins/newsletter/newsletter_tabs.html" />
+<#assign importDelete=(import_delete!false)>
+<#assign acceptCsvParams = { "accept": ".csv,text/csv" } />
+<#assign importFormParams = { "data-confirm-delete": "#i18n{newsletter.import_subscribers.confirmDelete}" } />
 <@pageContainer>
-    <@pageColumn>
-        <@pageHeader title=boxTitle />
-		<@breadcrumbs class='mb-3'>
-			<@breadcrumbItem>
-				<@link href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' title='#i18n{newsletter.manage_newsletters.boxTitle}'>
-					<@icon style='home' /> #i18n{newsletter.manage_newsletters.boxTitle}
-				</@link>
-			</@breadcrumbItem>
-			<@breadcrumbItem><@link href='jsp/admin/plugins/newsletter/ModifyNewsLetter.jsp?newsletter_id=${newsletter_id}'>${newsletter_name!}</@link></@breadcrumbItem>
-			<@breadcrumbItem><@link href='jsp/admin/plugins/newsletter/ManageSubscribers.jsp?newsletter_id=${newsletter_id}'>#i18n{newsletter.manage_subscribers.boxTitle}</@link></@breadcrumbItem>
-			<@breadcrumbItem>${boxTitle}</@breadcrumbItem>
-		</@breadcrumbs>
-		<@tform method='post' enctype='multipart/form-data' action='jsp/admin/plugins/newsletter/DoImportSubscribers.jsp' boxed=true>
-			<@input type='hidden' name='newsletter_id' value='${newsletter_id}' />
-			<@input type='hidden' name='import_delete' value='${import_delete?string}' />
-			<@row>
-				<@columns md=8>
-					<@formGroup labelFor='newsletter_import_path' labelKey='#i18n{newsletter.import_subscribers.label}' helpKey='#i18n{newsletter.import_subscribers.label.help}' mandatory=true>
-						<@inputGroup>
-							<@input type='file' id='newsletter_import_path' name='newsletter_import_path' value='' accept='.csv' />
-							<@inputGroupItem type='btn'>
-								<@button type='submit' buttonIcon='upload' title='#i18n{newsletter.import_subscribers.buttonImport}' />
-							</@inputGroupItem>
-						</@inputGroup>
-					</@formGroup>
-				</@columns>
-				<@columns md=4>
-					<@alert color='info' title=alertTitle iconTitle='alert-circle fs-1' />
-					<@alert color='warning' title='#i18n{newsletter.import_subscribers.notice2}' iconTitle='alert-triangle fs-1 me-2' />
-				</@columns>
-			</@row>
-		</@tform>
+	<@pageColumn>
+		<@newsletterPageHeader newsletter=newsletter />
+		<@tabs keepState=false>
+			<@newsletterTabs newsletter=newsletter activeTab='subscribers' />
+			<@tabContent>
+				<@tabPanel id='newsletter-subscribers-import' active=true>
+					<@row>
+						<@columns lg=8>
+							<@h level=3 class='mb-3'><#if importDelete>#i18n{newsletter.import_delete_subscribers.boxTitle}<#else>#i18n{newsletter.import_subscribers.boxTitle}</#if></@h>
+							<@tform id='import-form' method='post' enctype='multipart/form-data' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' params=importFormParams>
+								<@input type='hidden' name='action' value='importSubscribers' />
+								<@input type='hidden' name='newsletter_id' value='${newsletter.id?c}' />
+								<@fieldSet legend='#i18n{newsletter.import_subscribers.labelMode}' legendClass='form-label'>
+									<@radioButton name='import_delete' id='import_delete_false' value='false' labelKey='#i18n{newsletter.import_subscribers.modeAdd}' checked=!importDelete />
+									<@radioButton name='import_delete' id='import_delete_true' value='true' labelKey='#i18n{newsletter.import_subscribers.modeDelete}' checked=importDelete />
+								</@fieldSet>
+								<@alert id='import-delete-warning' color='danger' iconTitle='alert-triangle' title='#i18n{newsletter.import_subscribers.deleteWarning}' class=importDelete?then('', 'd-none') />
+								<@formGroup labelFor='newsletter_import_path' labelKey='#i18n{newsletter.import_subscribers.label}' helpKey='#i18n{newsletter.import_subscribers.dropHelp}' mandatory=true rows=2>
+									<@div id='import-dropzone' class='border border-2 rounded bg-body-tertiary text-center p-4'>
+										<@icon style='file-type-csv' class='fs-1 text-secondary d-block mb-2' />
+										<@input type='file' id='newsletter_import_path' name='newsletter_import_path' value='' mandatory=true params=acceptCsvParams />
+									</@div>
+								</@formGroup>
+								<@formGroup rows=2>
+									<@button type='submit' id='import-submit' buttonIcon='upload' title='#i18n{newsletter.import_subscribers.buttonImport}' color=importDelete?then('danger', 'primary') />
+									<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=manageSubscribers&newsletter_id=${newsletter.id?c}' buttonIcon='x' title='#i18n{portal.util.labelCancel}' color='light' />
+								</@formGroup>
+							</@tform>
+						</@columns>
+						<@columns lg=4>
+							<@box>
+								<@boxHeader title='#i18n{newsletter.import_subscribers.formatTitle}' />
+								<@boxBody>
+									<@p class='small text-secondary'>#i18n{newsletter.import_subscribers.label.help}</@p>
+									<@pre class='mb-0'>camille.martin@example.org
+l.bernard@example.org
+nadia.ferhat@example.org</@pre>
+								</@boxBody>
+							</@box>
+							<@alert color='info' iconTitle='info-circle' title='#i18n{newsletter.import_subscribers.modeAdd} : #i18n{newsletter.import_subscribers.notice1}' />
+							<@alert color='info' iconTitle='info-circle' title='#i18n{newsletter.import_subscribers.modeDelete} : #i18n{newsletter.import_delete_subscribers.notice1}' />
+							<@alert color='warning' iconTitle='alert-triangle' title='#i18n{newsletter.import_subscribers.notice2}' />
+						</@columns>
+					</@row>
+				</@tabPanel>
+			</@tabContent>
+		</@tabs>
 	</@pageColumn>
 </@pageContainer>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+	const zone = document.getElementById('import-dropzone');
+	const input = document.getElementById('newsletter_import_path');
+	if ( !zone || !input ) { return; }
+	['dragenter', 'dragover'].forEach(function(type) {
+		zone.addEventListener(type, function(e) {
+			e.preventDefault();
+			zone.classList.add('border-primary');
+		});
+	});
+	['dragleave', 'drop'].forEach(function(type) {
+		zone.addEventListener(type, function() {
+			zone.classList.remove('border-primary');
+		});
+	});
+	const form = document.getElementById('import-form');
+	const warning = document.getElementById('import-delete-warning');
+	const submit = document.getElementById('import-submit');
+	const deleteMode = document.getElementById('import_delete_true');
+	function updateMode() {
+		const destructive = deleteMode.checked;
+		warning.classList.toggle('d-none', !destructive);
+		submit.classList.toggle('btn-danger', destructive);
+		submit.classList.toggle('btn-primary', !destructive);
+	}
+	document.querySelectorAll('input[name="import_delete"]').forEach(function(radio) {
+		radio.addEventListener('change', updateMode);
+	});
+	form.addEventListener('submit', function(e) {
+		if ( deleteMode.checked && !window.confirm( form.dataset.confirmDelete ) ) {
+			e.preventDefault();
+		}
+	});
+	zone.addEventListener('drop', function(e) {
+		e.preventDefault();
+		if ( e.dataTransfer && e.dataTransfer.files.length > 0 ) {
+			input.files = e.dataTransfer.files;
+		}
+	});
+});
+</script>

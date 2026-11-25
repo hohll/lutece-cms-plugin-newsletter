@@ -33,15 +33,21 @@
  */
 package fr.paris.lutece.plugins.newsletter.service;
 
-import fr.paris.lutece.portal.service.plugin.PluginDefaultImplementation;
-
 /**
- * The newsletter plugin
+ * The constants of the newsletter plugin. The plugin itself is a PluginDefaultImplementation (plugin descriptor); the class stays for the name of
+ * the plugin, which the newsletter modules read.
  */
-public class NewsletterPlugin extends PluginDefaultImplementation
+public final class NewsletterPlugin
 {
     /**
      * Name of the newsletter plugin
      */
     public static final String PLUGIN_NAME = "newsletter";
+
+    /**
+     * Private constructor, the class holds constants only
+     */
+    private NewsletterPlugin( )
+    {
+    }
 }

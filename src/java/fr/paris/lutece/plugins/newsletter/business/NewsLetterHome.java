@@ -41,6 +41,7 @@ import jakarta.enterprise.inject.spi.CDI;
 import java.sql.Timestamp;
 import java.util.Calendar;
 import java.util.Collection;
+import java.util.Map;
 
 /**
  * This class provides instances management methods (create, find, ...) for NewsLetter objects
@@ -258,7 +259,7 @@ public final class NewsLetterHome
     }
 
     /**
-     * Returns the number of active subscriber for a newsletter
+     * Returns the number of subscribers a newsletter is sent to: confirmed subscriptions of subscribers who are not suspended
      * 
      * @param nNewsLetterId
      *            the identifier of the newsletter
@@ -313,4 +314,30 @@ public final class NewsLetterHome
         return _dao.checkLinkedPortlet( nIdNewsletter );
     }
 
+    /**
+     * Counts the subscribers of every newsletter: all of them, and those who confirmed their subscription
+     * 
+     * @param plugin
+     *            the Plugin
+     * @return keyed by newsletter identifier, the number of subscribers (first) and of confirmed subscribers (second); a newsletter without
+     *         subscriber is absent
+     */
+    public static Map<Integer, Pair<Integer, Integer>> findSubscriberCountsByNewsletter( Plugin plugin )
+    {
+        return _dao.selectSubscriberCountsByNewsletter( plugin );
+    }
+
+    /**
+     * Counts the subscribers of a newsletter: all of them, and those who confirmed their subscription
+     * 
+     * @param nNewsLetterId
+     *            the identifier of the newsletter
+     * @param plugin
+     *            the Plugin
+     * @return the number of subscribers (first) and of confirmed subscribers (second)
+     */
+    public static Pair<Integer, Integer> findSubscriberCounts( int nNewsLetterId, Plugin plugin )
+    {
+        return _dao.selectSubscriberCounts( nNewsLetterId, plugin );
+    }
 }

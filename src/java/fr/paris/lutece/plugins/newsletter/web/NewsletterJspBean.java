@@ -38,35 +38,33 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.io.Reader;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import jakarta.enterprise.context.SessionScoped;
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.apache.commons.lang3.Strings;
 
 import com.opencsv.CSVParserBuilder;
 import com.opencsv.CSVReader;
@@ -78,8 +76,10 @@ import fr.paris.lutece.plugins.newsletter.business.NewsLetterProperties;
 import fr.paris.lutece.plugins.newsletter.business.NewsLetterTemplate;
 import fr.paris.lutece.plugins.newsletter.business.NewsLetterTemplateHome;
 import fr.paris.lutece.plugins.newsletter.business.NewsletterPropertiesHome;
+import fr.paris.lutece.plugins.newsletter.business.Pair;
 import fr.paris.lutece.plugins.newsletter.business.SendingNewsLetter;
 import fr.paris.lutece.plugins.newsletter.business.SendingNewsLetterHome;
+import fr.paris.lutece.plugins.newsletter.business.SendingStatistics;
 import fr.paris.lutece.plugins.newsletter.business.Subscriber;
 import fr.paris.lutece.plugins.newsletter.business.SubscriberHome;
 import fr.paris.lutece.plugins.newsletter.business.topic.NewsletterTopic;
@@ -87,52 +87,58 @@ import fr.paris.lutece.plugins.newsletter.business.topic.NewsletterTopicHome;
 import fr.paris.lutece.plugins.newsletter.service.NewsLetterRegistrationService;
 import fr.paris.lutece.plugins.newsletter.service.NewsletterPlugin;
 import fr.paris.lutece.plugins.newsletter.service.NewsletterResourceIdService;
+import fr.paris.lutece.plugins.newsletter.service.SubscriberResourceIdService;
 import fr.paris.lutece.plugins.newsletter.service.NewsletterService;
 import fr.paris.lutece.plugins.newsletter.service.topic.NewsletterTopicService;
 import fr.paris.lutece.plugins.newsletter.util.NewsLetterConstants;
-import fr.paris.lutece.plugins.newsletter.util.NewsletterUtils;
 import fr.paris.lutece.portal.business.rbac.RBAC;
 import fr.paris.lutece.api.user.User;
 import fr.paris.lutece.portal.business.user.AdminUser;
 import fr.paris.lutece.portal.business.workgroup.AdminWorkgroupHome;
 import fr.paris.lutece.portal.service.admin.AccessDeniedException;
 import fr.paris.lutece.portal.service.admin.AdminUserService;
+import fr.paris.lutece.portal.business.editor.EditorProfile;
+import fr.paris.lutece.portal.service.editor.EditorProfileService;
+import fr.paris.lutece.portal.service.editor.RichTextEditorService;
 import fr.paris.lutece.portal.service.i18n.I18nService;
 import fr.paris.lutece.portal.service.message.AdminMessage;
 import fr.paris.lutece.portal.service.message.AdminMessageService;
 import fr.paris.lutece.portal.service.plugin.Plugin;
 import fr.paris.lutece.portal.service.plugin.PluginService;
 import fr.paris.lutece.portal.service.rbac.RBACService;
-import fr.paris.lutece.portal.service.security.SecurityTokenService;
 import fr.paris.lutece.portal.service.template.AppTemplateService;
 import fr.paris.lutece.portal.service.template.HtmlMarkup;
 import fr.paris.lutece.portal.service.upload.MultipartItem;
 import fr.paris.lutece.portal.service.util.AppLogService;
 import fr.paris.lutece.portal.service.util.AppPathService;
-import fr.paris.lutece.portal.service.util.AppPropertiesService;
 import fr.paris.lutece.portal.service.workgroup.AdminWorkgroupService;
-import fr.paris.lutece.portal.web.admin.PluginAdminPageJspBean;
+import fr.paris.lutece.portal.util.mvc.admin.MVCAdminJspBean;
+import fr.paris.lutece.portal.util.mvc.admin.annotations.Controller;
+import fr.paris.lutece.portal.util.mvc.commons.annotations.Action;
+import fr.paris.lutece.portal.util.mvc.commons.annotations.View;
+import fr.paris.lutece.portal.web.cdi.mvc.Models;
 import fr.paris.lutece.portal.web.constants.Messages;
 import fr.paris.lutece.portal.web.constants.Parameters;
 import fr.paris.lutece.portal.web.upload.MultipartHttpServletRequest;
-import fr.paris.lutece.portal.web.util.LocalizedPaginator;
+import fr.paris.lutece.portal.web.util.IPager;
+import fr.paris.lutece.portal.web.util.Pager;
 import fr.paris.lutece.util.ReferenceList;
-import fr.paris.lutece.util.datatable.DataTableManager;
 import fr.paris.lutece.util.date.DateUtil;
 import fr.paris.lutece.util.filesystem.UploadUtil;
 import fr.paris.lutece.util.html.HtmlTemplate;
-import fr.paris.lutece.util.html.IPaginator;
-import fr.paris.lutece.util.html.Paginator;
 import fr.paris.lutece.util.sort.AttributeComparator;
 import fr.paris.lutece.util.string.StringUtil;
 import fr.paris.lutece.util.url.UrlItem;
 
 /**
- * This class provides the user interface to manage NewsLetters features
+ * This class provides the user interface to manage NewsLetters features: the list of the newsletters, their settings, their content (topics and
+ * template), their composition, their subscribers, their sending and their archive. Every change of state is an action posted with the security
+ * token of the page that shows it; a link only opens a view, or the confirmation of an action.
  */
 @SessionScoped
 @Named
-public class NewsletterJspBean extends PluginAdminPageJspBean
+@Controller( controllerJsp = NewsletterJspBean.CONTROLLER_JSP, controllerPath = NewsletterJspBean.CONTROLLER_PATH, right = NewsletterJspBean.RIGHT_NEWSLETTER_MANAGEMENT, securityTokenEnabled = true )
+public class NewsletterJspBean extends MVCAdminJspBean
 {
     /**
      * The right used for managing newsletters
@@ -140,30 +146,34 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     public static final String RIGHT_NEWSLETTER_MANAGEMENT = "NEWSLETTER_MANAGEMENT";
 
     /**
+     * The controller JSP
+     */
+    public static final String CONTROLLER_JSP = "ManageNewsLetter.jsp";
+
+    /**
+     * The controller path
+     */
+    public static final String CONTROLLER_PATH = "jsp/admin/plugins/newsletter/";
+
+    /**
      * Serial version UID
      */
     private static final long serialVersionUID = 5581671308419705321L;
 
     private static final String CONSTANT_CSV_FILE_EXTENSION = ".csv";
-    private static final String CONSTANT_EMAIL_COLUMN_INDEX = "newsletter.csv.import.columnindex";
-    private static final String PROPERTY_LIMIT_MAX_SUSCRIBER = "newsletter.limit.max";
-    private static final String PROPERTY_LIMIT_MIN_SUSCRIBER = "newsletter.limit.min";
 
     private static final String CONSTANT_ACTION_REGISTER = "register";
     private static final String CONSTANT_ACTION_PREPARE_SENDING = "prepare_sending";
     private static final String CONSTANT_ACTION_CANCEL = "cancel";
     private static final String CONSTANT_ACTION_TEST_SENDING = "test_sending";
 
-    private static final String PROPERTY_LIMIT_CONFIRM_DAYS = "newsletter.confirm.limit";
     private static final String PROPERTY_SELECT_MANDATORY = "newsletter.manage_archive.multiSelectError";
 
     // Css inclusion
-    private static final String PROPERTY_CSS_FILES = "newsletter.css.files";
     private static final String SEPARATOR_PROPERTY_CSS_FILES = ";";
     private static final String SEPARATOR_CSS_FILES_CONTENT = "\n";
 
     // Handling of CSV
-    private static final String PROPERTY_IMPORT_DELIMITER = "newsletter.csv.import.delimiter";
 
     // templates
     private static final String TEMPLATE_MANAGE_NEWSLETTERS = "admin/plugins/newsletter/manage_newsletters.html";
@@ -179,6 +189,58 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String TEMPLATE_MANAGE_OLD_NEWSLETTERS = "admin/plugins/newsletter/manage_old_newsletters.html";
     private static final String TEMPLATE_MANAGE_NEWSLETTER_TOPICS = "admin/plugins/newsletter/manage_newsletter_topics.html";
     private static final String TEMPLATE_MODIFY_TOPIC_CONFIG = "admin/plugins/newsletter/modify_topic_config.html";
+
+    // views
+    private static final String VIEW_MANAGE_NEWSLETTERS = "manageNewsLetters";
+    private static final String VIEW_MANAGE_ARCHIVE = "manageArchive";
+    private static final String VIEW_MANAGE_PROPERTIES = "manageNewsLetterProperties";
+    private static final String VIEW_CONFIRM_CLEAN_SUBSCRIBERS = "confirmCleanSubscribers";
+    private static final String VIEW_CREATE_NEWSLETTER = "createNewsLetter";
+    private static final String VIEW_COMPOSE_NEWSLETTER = "composeNewsLetter";
+    private static final String VIEW_MODIFY_NEWSLETTER = "modifyNewsLetter";
+    private static final String VIEW_CONFIRM_REMOVE_SUBSCRIBER = "confirmRemoveSubscriber";
+    private static final String VIEW_CONFIRM_REMOVE_SELECTED_SUBSCRIBERS = "confirmRemoveSelectedSubscribers";
+    private static final String VIEW_CONFIRM_REMOVE_NEWSLETTER = "confirmRemoveNewsLetter";
+    private static final String VIEW_CONFIRM_REMOVE_SENDING = "confirmRemoveSendingNewsLetter";
+    private static final String VIEW_CONFIRM_REMOVE_MULTI_SENDING = "confirmRemoveMultiSendingNewsLetter";
+    private static final String VIEW_MANAGE_SUBSCRIBERS = "manageSubscribers";
+    private static final String VIEW_PREPARE_NEWSLETTER = "prepareNewsLetter";
+    private static final String VIEW_CONFIRM_SEND_NEWSLETTER = "confirmSendNewsLetter";
+    private static final String VIEW_CONFIRM_TEST_NEWSLETTER = "confirmTestNewsLetter";
+    private static final String VIEW_IMPORT_SUBSCRIBERS = "importSubscribers";
+    private static final String VIEW_IMPORT_DELETE_SUBSCRIBERS = "importDeleteSubscribers";
+    private static final String VIEW_MANAGE_TOPICS = "manageNewsletterTopics";
+    private static final String VIEW_CONFIRM_REMOVE_TOPIC = "confirmRemoveNewsletterTopic";
+    private static final String VIEW_MODIFY_TOPIC_CONFIG = "modifyTopicConfig";
+
+    // actions
+    private static final String ACTION_COPY_NEWSLETTER = "copyNewsLetter";
+    private static final String ACTION_MODIFY_PROPERTIES = VIEW_MANAGE_PROPERTIES;
+    private static final String ACTION_CLEAN_SUBSCRIBERS = "cleanSubscribers";
+    private static final String PARAMETER_RETURN_VIEW = "return_view";
+    private static final String VALUE_RETURN_SUBSCRIBERS = "subscribers";
+    private static final String ACTION_CREATE_NEWSLETTER = VIEW_CREATE_NEWSLETTER;
+    private static final String ACTION_MODIFY_NEWSLETTER = VIEW_MODIFY_NEWSLETTER;
+    private static final String ACTION_REGISTER_NEWSLETTER = "registerNewsLetter";
+    private static final String ACTION_REMOVE_SUBSCRIBER = "removeSubscriber";
+    private static final String ACTION_REMOVE_SELECTED_SUBSCRIBERS = "removeSelectedSubscribers";
+    private static final String ACTION_REMOVE_NEWSLETTER = "removeNewsLetter";
+    private static final String ACTION_REMOVE_SENDING = "removeSendingNewsLetter";
+    private static final String ACTION_REMOVE_MULTI_SENDING = "removeMultiSendingNewsLetter";
+    private static final String ACTION_ADD_SUBSCRIBER = "addSubscriber";
+    private static final String ACTION_SEND_NEWSLETTER = "sendNewsLetter";
+    private static final String ACTION_TEST_NEWSLETTER = "testNewsLetter";
+    private static final String ACTION_IMPORT_SUBSCRIBERS = VIEW_IMPORT_SUBSCRIBERS;
+    private static final String ACTION_MODIFY_TOPICS = "modifyNewsletterTopics";
+    private static final String ACTION_REMOVE_TOPIC = "removeNewsletterTopic";
+    private static final String ACTION_MODIFY_TOPIC_CONFIG = VIEW_MODIFY_TOPIC_CONFIG;
+
+    // operations of the topics page
+    private static final String OPERATION_ADD_TOPIC = "addTopic";
+    private static final String OPERATION_MOVE_TOPIC = "moveTopic";
+    private static final String OPERATION_CHANGE_SECTION = "changeSection";
+    private static final String OPERATION_UPDATE_TEMPLATE = "updateTemplate";
+
     // marks
     private static final String MARK_LIST_NEWSLETTER_TEMPLATES = "newsletter_templates";
     private static final String MARK_NEWSLETTER = "newsletter";
@@ -194,30 +256,58 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String MARK_NEWSLETTER_WORKGROUP_DESCRIPTION = "newsletter_workgroup_description";
     private static final String MARK_NEWSLETTER_COUNT_SUBSCRIBERS = "newsletter_count_subscribers";
     private static final String MARK_NEWSLETTER_ID = "newsletter_id";
-    private static final String MARK_NEWSLETTER_NAME = "newsletter_name";
     private static final String MARK_IMPORT_DELETE = "import_delete";
     private static final String MARK_NEWSLETTER_CONTENT = "newsletter_content";
     private static final String MARK_HTML_CONTENT = "html_content";
+    private static final String MARK_LUTECE_PROD_URL = "lutece_prod_url";
     private static final String MARK_WEBAPP_URL = "webapp_url";
     private static final String MARK_NEWSLETTER_TEMPLATE_ID = "newsletter_template_id";
+    private static final String MARK_NEWSLETTER_TEMPLATE_MISSING = "newsletter_template_missing";
+    private static final String MARK_MISSING_TEMPLATE_IDS = "missing_template_ids";
+    private static final String MARK_AVAILABLE_PICTURES = "available_pictures";
     private static final String MARK_PREVIEW = "newsletter_preview";
+    private static final String MARK_PREVIEW_HTML = "newsletter_preview_html";
     private static final String MARK_NEWSLETTER_OBJECT = "newsletter_object";
     private static final String MARK_MESSAGE = "message";
     private static final String MARK_MESSAGE_TYPE = "type";
     private static final String MARK_TEXT = "text";
     private static final String MARK_DATE_LAST_SEND = "newsletter_last_sent";
     private static final String MARK_IMG_PATH = "img_path";
+    private static final String MARK_LUTECE_EDITOR = "lutece_editor";
     private static final String MARK_LOCALE = "locale";
     private static final String MARK_PROPERTIES = "properties";
+    private static final String MARK_EDITORS_LIST = "editors_list";
+    private static final String MARK_NEWSLETTER_EDITOR = "newsletter_editor";
+    private static final String MARK_TEXT_EDITOR_PROFILE = "textEditorProfile";
+    private static final String KEY_PROFILE_PLUGIN = "plugin";
+    private static final String KEY_PROFILE_NAME = "name";
+    private static final String KEY_PROFILE_EDITOR = "editor";
+    private static final String KEY_PROFILE_CONFIG = "config";
+    private static final String PROPERTY_EDITOR_GRAPESJS = "newsletter.manage_newsletters_properties.editorGrapesjs";
+    private static final String PROPERTY_EDITOR_SITE = "newsletter.manage_newsletters_properties.editorSite";
     private static final String MARK_NEWSLETTER_LIST = "newsletters_list";
     private static final String MARK_ALLOW_CREATION = "creation_allowed";
     private static final String MARK_LIST_TOPIC_TYPES = "list_topic_types";
-    private static final String MARK_NEWSLETTER_TABLE_MANAGER = "table_manager";
     private static final String MARK_SECTION_SIZES = "section_size";
+    private static final String MARK_TOPIC_STATUS = "topic_status";
+    private static final String MARK_TOPIC_SUMMARIES = "topic_summaries";
+    private static final String TOPIC_STATUS_OK = "ok";
+    private static final String TOPIC_STATUS_EMPTY = "empty";
+    private static final String TOPIC_STATUS_UNCONFIGURED = "unconfigured";
+    private static final String MARK_TOPICS_LIST = "topics_list";
+    private static final String MARK_NEWSLETTER_COUNT_ACTIVE_SUBSCRIBERS = "newsletter_count_active_subscribers";
+    private static final String MARK_NEWSLETTER_COUNT_SENDINGS = "newsletter_count_sendings";
+    private static final String MARK_NEWSLETTER_LAST_SENDING_DATE = "newsletter_last_sending_date";
+    private static final String MARK_NEWSLETTER_TEMPLATE_DESCRIPTION = "newsletter_template_description";
+    private static final String MARK_COUNT_NEWSLETTERS = "count_newsletters";
+    private static final String MARK_COUNT_ACTIVE_SUBSCRIBERS = "count_active_subscribers";
+    private static final String MARK_COUNT_PENDING_SUBSCRIBERS = "count_pending_subscribers";
+    private static final String MARK_COUNT_RECENT_SENDINGS = "count_recent_sendings";
+    private static final String MARK_SEARCH_NAME = "search_name";
+    private static final String MARK_SEARCH_DATE = "search_date";
     private static final String MARK_SUBSCRIBERS_LIST = "subscribers_list";
     private static final String MARK_WORKGROUP_LIST = "workgroup_list";
-    private static final String MARK_PAGINATOR = "paginator";
-    private static final String MARK_NB_ITEMS_PER_PAGE = "nb_items_per_page";
+    private static final String MARK_NEWSLETTER_PAGE_ITEMS = "newsletter_page_items";
     private static final String MARK_CSS = "newsletter_css";
     private static final String MARK_UNSUBSCRIBE = "unsubscribe";
     private static final String MARK_UNSUBSCRIBE_LIST = "unsubscribe_list";
@@ -227,19 +317,15 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String MARK_IMPORT_SUBSCRIBER_RIGHT = "is_import_subscriber_right";
     private static final String MARK_EXPORT_SUBSCRIBER_RIGTH = "is_export_subscriber_right";
     private static final String MARK_CLEAN_RIGHT = "is_clean_subscriber_right";
-    private static final String MARK_NEWSLETTER_TOPIC_TITLE = "title";
-    private static final String MARK_NEWSLETTER_TOPIC_TYPE = "topicTypeName";
-    private static final String MARK_NEWSLETTER_TOPIC_ORDER = "order";
+    private static final String MARK_SUBSCRIBER_MANAGEMENT_RIGHT = "is_subscriber_management_right";
     private static final String MARK_CONTENT = "content";
     private static final String MARK_TOPIC = "topic";
     private static final String MARK_SEARCH_STRING = "search_string";
-    private static final String PARAMETER_SEARCH_NAME = "search_name";
-    private static final String PARAMETER_SEARCH_DATE = "search_date";
-    private static final String PARAMETER_SEARCH_RESET = "search_reset";
     private static final String MARK_RIGHT_MANAGE_NEWSLETTER_PROPERTIES = "right_manage_newsletter_properties";
 
     // PARAMETER
-    private static final String PARAMETER_ACTION = "action";
+    private static final String PARAMETER_COMPOSE_ACTION = "compose_action";
+    private static final String PARAMETER_OPERATION = "operation";
     private static final String PARAMETER_NEWSLETTER_ID = "newsletter_id";
     private static final String PARAMETER_TOPIC_TYPE = "topic_type";
     private static final String PARAMETER_SENDING_NEWSLETTER_ID = "sending_newsletter_id";
@@ -259,38 +345,18 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String PARAMETER_NEWSLETTER_WORKGROUP = "newsletter_workgroup";
     private static final String PARAMETER_TERM_OF_SERVICE = "tos";
     private static final String PARAMETER_NEWSLETTER_UNSUBSCRIBE = "newsletter_unsubscribe";
-    private static final String PARAMETER_PAGE_INDEX = "page_index";
     private static final String PARAMETER_TEST_RECIPIENTS = "newsletter_test_recipients";
     private static final String PARAMETER_TEST_SUBJECT = "newsletter_test_subject";
     private static final String PARAMETER_ACTIVE_CAPTCHA = "active_captcha";
     private static final String PARAMETER_ACTIVE_VALIDATION = "active_validation";
+    private static final String PARAMETER_EDITOR = "editor";
     private static final String PARAMETER_SUBSCRIBERS_SELECTION = "subscriber_selection";
     private static final String PARAMETER_TOPIC_ID = "topic_id";
-    private static final String PARAMETER_NEWSLETTER_TOPICS_TABLE_MANAGER = "newsletter_topics_table_manager";
     private static final String PARAMETER_MOVE_UP = "move_up";
     private static final String PARAMETER_TITLE = "title";
-    private static final String PARAMETER_UPDATE_TEMPLATE = "update_template";
+    private static final String PARAMETER_SEARCH_NAME = "search_name";
+    private static final String PARAMETER_SEARCH_DATE = "search_date";
     private static final String PARAMETER_NEWSLETTER_SELECTION = "newsletter_selection";
-
-    // URL
-    private static final String JSP_URL_DO_COMPOSE_NEWSLETTER = "ComposeNewsLetter.jsp";
-    private static final String JSP_URL_DO_PREPARE_NEWSLETTER = "DoPrepareNewsLetter.jsp";
-    private static final String JSP_URL_CONFIRM_TEST_NEWSLETTER = "ConfirmTestNewsLetter.jsp";
-    private static final String JSP_URL_DO_REMOVE_NEWSLETTER = "jsp/admin/plugins/newsletter/DoRemoveNewsLetter.jsp";
-    private static final String JSP_URL_DO_REMOVE_SENDING_NEWSLETTER = "jsp/admin/plugins/newsletter/DoRemoveSendingNewsLetter.jsp";
-    private static final String JSP_URL_DO_REMOVE_MULTI_NEWSLETTER = "jsp/admin/plugins/newsletter/DoRemoveMultiNewsLetter.jsp";
-    private static final String JSP_URL_DO_REMOVE_SUBSCRIBER = "jsp/admin/plugins/newsletter/DoUnsubscribeNewsLetterAdmin.jsp";
-    private static final String JSP_URL_DO_REMOVE_SELECTION = "jsp/admin/plugins/newsletter/DoRemoveSelection.jsp";
-    private static final String JSP_URL_MANAGE_NEWSLETTER = "ManageNewsLetter.jsp";
-    private static final String JSP_URL_MANAGE_SUBSCRIBERS = "ManageSubscribers.jsp";
-    private static final String JSP_URL_MANAGE_ARCHIVE = "ManageArchive.jsp";
-    private static final String JSP_URL_PREPARE_NEWSLETTER = "PrepareNewsLetter.jsp";
-    private static final String JSP_URL_CONFIRM_SEND_NEWSLETTER = "GetConfirmSendNewsLetter.jsp";
-    private static final String JSP_URL_TEST_NEWSLETTER = "jsp/admin/plugins/newsletter/DoTestNewsLetter.jsp";
-    private static final String JSP_URL_MANAGE_NEWSLETTER_TOPIC = "jsp/admin/plugins/newsletter/GetManageNewsletterTopics.jsp";
-    private static final String JSP_URL_MODIFY_TOPIC_CONFIG = "GetModifyTopicConfig.jsp";
-    private static final String JSP_URL_DO_REMOVE_TOPIC = "jsp/admin/plugins/newsletter/DoRemoveNewsletterTopic.jsp";
-    private static final String JSP_URL_MANAGE_TOPICS = "GetManageNewsletterTopics.jsp";
 
     // messages
     private static final String MESSAGE_CONFIRM_TEST_NEWSLETTER = "newsletter.message.confirmTestNewsletter";
@@ -302,13 +368,13 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String MESSAGE_CONFIRM_REMOVE_SUBSCRIBER = "newsletter.message.confirmRemoveSubscriber";
     private static final String MESSAGE_CONFIRM_REMOVE_SELECTION = "newsletter.message.confirmRemoveSelection";
     private static final String MESSAGE_CONFIRM_SEND_NEWSLETTER = "newsletter.message.confirmSendNewsletter";
+    private static final String MESSAGE_CONFIRM_CLEAN_SUBSCRIBERS = "newsletter.message.confirmCleanSubscribers";
     private static final String MESSAGE_CSV_FILE_EMPTY_OR_NOT_VALID_EMAILS = "newsletter.message.csvFileEmptyOrNotValidEmails";
     private static final String MESSAGE_COLUMN_INDEX_NOT_EXIST = "newsletter.message.csvColumnIndexNotExist";
     private static final String MESSAGE_CSV_FILE_EXTENSION = "newsletter.message.csvFileExtension";
     private static final String MESSAGE_EMAIL_EXISTS = "newsletter.message.emailExists";
     private static final String MESSAGE_FIELD_EMAIL_VALID = "newsletter.message.fieldEmailValid";
     private static final String MESSAGE_NO_SUBSCRIBER = "newsletter.message.noSubscriber";
-    private static final String MESSAGE_NO_SUBSCRIBER_EXPORT = "newsletter.message.noSubscriberExport";
     private static final String MESSAGE_WRONG_EMAIL = "newsletter.message.wrongEmail";
     private static final String MESSAGE_WRONG_EMAIL_SENDER = "newsletter.message.wrongEmailSender";
     private static final String MESSAGE_WRONG_DATE_LAST_SEND = "newsletter.message.wrongDateLastSend";
@@ -319,9 +385,7 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String MESSAGE_PAGE_TITLE_MANAGE_TOPICS = "newsletter.manage_topics.pageTitle";
     private static final String MESSAGE_CONFIRM_REMOVE_TOPIC = "newsletter.manage_topics.confirmRemoveTopic";
     private static final String MESSAGE_FRAGMENT_NO_CHANGE = "newsletter.message.fragment_no_change";
-    private static final String MESSAGE_SENDING_ALREADY_DONE = "newsletter.message.sendingAlreadyDone";
 
-    private static final String ACTION_SEND_NEWSLETTER = "sendNewsLetter";
     private static final String MESSAGE_USER_NOT_ALLOWED_NEWSLETTER_PROPERTIES = "Newsletter properties : user not allowed to access this feature : ";
 
     private static final String PROPERTY_PAGE_TITLE_IMPORT = "newsletter.import_subscribers.pageTitle";
@@ -331,12 +395,8 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String PROPERTY_PAGE_TITLE_NEWSLETTERS_PROPERTIES = "newsletter.manage_newsletters_properties.pageTitle";
     private static final String PROPERTY_PAGE_TITLE_CREATE = "newsletter.create_newsletter.pageTitle";
     private static final String PROPERTY_PAGE_TITLE_MODIFY_TOPIC_CONFIGURATION = "newsletter.modify_topic_config.pageTitle";
+    private static final String PROPERTY_PAGE_TITLE_CONFIRM_SEND = "newsletter.prepare_newsletter.stepConfirm";
 
-    private static final String LABEL_NEWSLETTER_TOPIC_TITLE = "newsletter.manage_topics.labelTopicTitle";
-    private static final String LABEL_NEWSLETTER_TOPIC_TYPE = "newsletter.manage_topics.labelTopicType";
-    private static final String LABEL_NEWSLETTER_TOPIC_ORDER = "newsletter.manage_topics.labelTopicOrder";
-    private static final String LABEL_NEWSLETTER_TOPIC_SECTION = "newsletter.manage_topics.labelTopicSection";
-    private static final String LABEL_NEWSLETTER_ACTION = "newsletter.manage_topics.labelActions";
     private static final String LABLE_COPY_NEWSLETTER_TITLE = "newsletter.manage_newsletters.copy.title";
     private static final int NEWSLETTER_NAME_MAX_LENGTH = 50;
 
@@ -344,99 +404,84 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private static final String PROPERTY_PAGE_TITLE_MODIFY = "newsletter.modify_newsletter.pageTitle";
     private static final String PROPERTY_PAGE_TITLE_MANAGE_SUBSCRIBERS = "newsletter.manage_subscribers.pageTitle";
     private static final String PROPERTY_PAGE_TITLE_PREPARE = "newsletter.prepare_newsletter.pageTitle";
-    private static final String PROPERTY_USERS_PER_PAGE = "paginator.user.itemsPerPage";
+    private static final String PROPERTY_SUBSCRIBERS_PER_PAGE = "newsletter.newsletterSubscribers.itemsPerPage";
     private static final String PROPERTY_NEWSLETTERS_PER_PAGE = "newsletter.newslettersPerPage";
+    private static final String PROPERTY_ARCHIVE_PER_PAGE = "newsletter.archive.itemsPerPage";
+    private static final String PAGER_NEWSLETTERS = "newsletterList";
+    private static final String PAGER_ARCHIVE = "newsletterArchive";
+    private static final String PAGER_SUBSCRIBERS = "newsletterSubscribers";
     private static final String PROPERTY_LABEL_UNSUBSCRIBE_TRUE = "newsletter.unsubscribe.true";
     private static final String PROPERTY_LABEL_UNSUBSCRIBE_FALSE = "newsletter.unsubscribe.false";
     private static final String PROPERTY_TEST_SUBJECT = "newsletter.test.subject";
-    private static final String PROPERTY_ITEMS_PER_PAGE = "newsletter.itemsPerPage";
 
-    private static final int CONSTANT_DEFAULT_ITEM_PER_PAGE = 50;
-    private static final String CONSTANT_FREEMARKER_MACRO_COLUMN_SECTION = "getSectionColumn";
     private static final String CONSTANT_DEFAULT_NEWSLETTERS_SORT_ATTRIBUTE = "name";
+    private static final int CONSTANT_RECENT_SENDINGS_DAYS = 30;
+    private static final String SEPARATOR_SENDING_IDS = "_";
 
     // constants
-    private static final String JCAPTCHA_PLUGIN = "jcaptcha";
-    private static final int DEFAULT_LIMIT = 7;
-    private int _nItemsPerPage;
-    private int _nDefaultItemsPerPage;
-    private String _strCurrentPageIndex;
+    private String _strNewsletterListSearchName;
+    private LocalDate _dateNewsletterListSearch;
     private String [ ] _multiSelectionValues;
     private String _strSortedAttributeName;
     private Boolean _bIsAscSort;
     @Inject
-    private transient NewsletterService _newsletterService;
+    private NewsletterService _newsletterService;
     @Inject
-    private transient NewsletterTopicService _newsletterTopicService;
+    private NewsletterTopicService _newsletterTopicService;
     @Inject
-    private transient NewsLetterRegistrationService _registrationService;
-
-    /**
-     * Creates a new NewsletterJspBean object.
-     */
-    public NewsletterJspBean( )
-    {
-        _nDefaultItemsPerPage = AppPropertiesService.getPropertyInt( PROPERTY_NEWSLETTERS_PER_PAGE, 10 );
-    }
-
-    /**
-     * JspBeans are instantiated by &lt;jsp:useBean&gt; outside of the CDI
-     * container, so @Inject is not honored. In addition, instances kept in the
-     * HTTP session can predate any constructor changes. The lazy getters below
-     * resolve the required services via CDI lookup on first use.
-     */
-    private NewsletterService getNewsletterService( )
-    {
-        if ( _newsletterService == null )
-        {
-            _newsletterService = CDI.current( ).select( NewsletterService.class ).get( );
-        }
-        return _newsletterService;
-    }
-
-    private NewsletterTopicService getNewsletterTopicService( )
-    {
-        if ( _newsletterTopicService == null )
-        {
-            _newsletterTopicService = CDI.current( ).select( NewsletterTopicService.class ).get( );
-        }
-        return _newsletterTopicService;
-    }
-
-    private NewsLetterRegistrationService getRegistrationService( )
-    {
-        if ( _registrationService == null )
-        {
-            _registrationService = CDI.current( ).select( NewsLetterRegistrationService.class ).get( );
-        }
-        return _registrationService;
-    }
+    private NewsLetterRegistrationService _registrationService;
+    @Inject
+    private EditorProfileService _editorProfileService;
+    @Inject
+    @ConfigProperty( name = "newsletter.confirm.limit", defaultValue = "7" )
+    private int _nConfirmLimit;
+    @Inject
+    @ConfigProperty( name = "newsletter.limit.min", defaultValue = "0" )
+    private int _nLimitMinSubscriber;
+    @Inject
+    @ConfigProperty( name = "newsletter.limit.max", defaultValue = "10000000" )
+    private int _nLimitMaxSubscriber;
+    @Inject
+    @ConfigProperty( name = "newsletter.csv.import.delimiter", defaultValue = ";" )
+    private String _strImportDelimiter;
+    @Inject
+    @ConfigProperty( name = "newsletter.csv.import.columnindex", defaultValue = "0" )
+    private int _nImportEmailColumnIndex;
+    @Inject
+    @Pager( name = PAGER_NEWSLETTERS, listBookmark = MARK_NEWSLETTER_PAGE_ITEMS, defaultItemsPerPage = PROPERTY_NEWSLETTERS_PER_PAGE, baseUrl = CONTROLLER_PATH + CONTROLLER_JSP )
+    private IPager<NewsLetter, NewsLetter> _newsletterPager;
+    @Inject
+    @Pager( name = PAGER_ARCHIVE, listBookmark = MARK_NEWSLETTER_LIST, defaultItemsPerPage = PROPERTY_ARCHIVE_PER_PAGE, baseUrl = CONTROLLER_PATH + CONTROLLER_JSP )
+    private IPager<SendingNewsLetter, SendingNewsLetter> _archivePager;
+    @Inject
+    @Pager( name = PAGER_SUBSCRIBERS, listBookmark = MARK_SUBSCRIBERS_LIST, defaultItemsPerPage = PROPERTY_SUBSCRIBERS_PER_PAGE, baseUrl = CONTROLLER_PATH + CONTROLLER_JSP )
+    private IPager<Subscriber, Subscriber> _subscriberPager;
 
     /**
      * Returns the list of newsletters
-     * 
+     *
      * @param request
      *            the HTTP request
+     * @param model
+     *            the model of the page
      * @return the html code for display the newsletters list
      */
-    public String getManageNewsLetters( HttpServletRequest request )
+    @View( value = VIEW_MANAGE_NEWSLETTERS, defaultView = true, securityTokenAction = ACTION_COPY_NEWSLETTER )
+    public String getManageNewsLetters( HttpServletRequest request, Models model )
     {
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_NEWSLETTERS );
-        _strCurrentPageIndex = Paginator.getPageIndex( request, Paginator.PARAMETER_PAGE_INDEX, _strCurrentPageIndex );
-        _nItemsPerPage = Paginator.getItemsPerPage( request, Paginator.PARAMETER_ITEMS_PER_PAGE, _nItemsPerPage, _nDefaultItemsPerPage );
+        if ( request.getParameter( PARAMETER_SEARCH_NAME ) != null || request.getParameter( PARAMETER_SEARCH_DATE ) != null )
+        {
+            String strRequestName = StringUtils.trimToEmpty( request.getParameter( PARAMETER_SEARCH_NAME ) );
+            LocalDate dateRequest = parseSearchDate( request.getParameter( PARAMETER_SEARCH_DATE ) );
+            _strNewsletterListSearchName = strRequestName;
+            _dateNewsletterListSearch = dateRequest;
+        }
+        String strSearchName = StringUtils.defaultString( _strNewsletterListSearchName );
+        LocalDate dateSearch = _dateNewsletterListSearch;
 
-        Map<String, Object> model = new HashMap<String, Object>( );
         Collection<NewsLetter> listNewsletter = NewsLetterHome.findAll( getPlugin( ) );
         listNewsletter = AdminWorkgroupService.getAuthorizedCollection( listNewsletter, (User) getUser( ) );
 
-        // SEARCH
-        String strSearchName = ( request.getParameter( PARAMETER_SEARCH_RESET ) == null ) ? request.getParameter( PARAMETER_SEARCH_NAME ) : null;
-        String strSearchDate = ( request.getParameter( PARAMETER_SEARCH_RESET ) == null ) ? request.getParameter( PARAMETER_SEARCH_DATE ) : null;
-        listNewsletter = filterNewsletters( listNewsletter, strSearchName, strSearchDate );
-        model.put( PARAMETER_SEARCH_NAME, StringUtils.defaultString( strSearchName ) );
-        model.put( PARAMETER_SEARCH_DATE, StringUtils.defaultString( strSearchDate ) );
-
-        // SORT
         if ( _strSortedAttributeName == null )
         {
             _strSortedAttributeName = CONSTANT_DEFAULT_NEWSLETTERS_SORT_ATTRIBUTE;
@@ -449,31 +494,65 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
             _bIsAscSort = Boolean.parseBoolean( request.getParameter( Parameters.SORTED_ASC ) );
         }
 
-        UrlItem url = new UrlItem( request.getRequestURI( ) );
+        UrlItem url = new UrlItem( getViewFullUrl( VIEW_MANAGE_NEWSLETTERS ) );
         url.addParameter( Parameters.SORTED_ATTRIBUTE_NAME, _strSortedAttributeName );
-        url.addParameter( Parameters.SORTED_ASC, Boolean.toString(_bIsAscSort) );
-        if ( StringUtils.isNotBlank( strSearchName ) )
-        {
-            url.addParameter( PARAMETER_SEARCH_NAME, strSearchName );
-        }
-        if ( StringUtils.isNotBlank( strSearchDate ) )
-        {
-            url.addParameter( PARAMETER_SEARCH_DATE, strSearchDate );
-        }
-        listNewsletter = listNewsletter.stream().sorted(new AttributeComparator( _strSortedAttributeName, _bIsAscSort )).collect(Collectors.toList());
+        url.addParameter( Parameters.SORTED_ASC, Boolean.toString( _bIsAscSort ) );
+        listNewsletter = listNewsletter.stream( ).sorted( new AttributeComparator( _strSortedAttributeName, _bIsAscSort ) ).collect( Collectors.toList( ) );
 
-        Collection<Map<String, Object>> listNewsletterDisplay = new ArrayList<Map<String, Object>>( );
+        if ( StringUtils.isNotEmpty( strSearchName ) )
+        {
+            url.addParameter( PARAMETER_SEARCH_NAME, URLEncoder.encode( strSearchName, StandardCharsets.UTF_8 ) );
+        }
+        if ( dateSearch != null )
+        {
+            url.addParameter( PARAMETER_SEARCH_DATE, dateSearch.toString( ) );
+        }
+
+        Map<Integer, Pair<Integer, Integer>> mapSubscriberCounts = NewsLetterHome.findSubscriberCountsByNewsletter( getPlugin( ) );
+        Timestamp dateRecentSendings = new Timestamp( System.currentTimeMillis( ) - TimeUnit.DAYS.toMillis( CONSTANT_RECENT_SENDINGS_DAYS ) );
+        Map<Integer, SendingStatistics> mapSendingStatistics = SendingNewsLetterHome.findSendingStatisticsByNewsletter( dateRecentSendings, getPlugin( ) );
+        Map<Integer, String> mapTemplateDescriptions = new HashMap<>( );
+        for ( NewsLetterTemplate newsletterTemplate : NewsLetterTemplateHome.getTemplatesList( getPlugin( ) ) )
+        {
+            mapTemplateDescriptions.put( newsletterTemplate.getId( ), StringUtils.defaultString( newsletterTemplate.getDescription( ) ) );
+        }
+        Pair<Integer, Integer> emptyCounts = new Pair<>( 0, 0 );
+        SendingStatistics emptyStatistics = new SendingStatistics( 0, 0, null );
+
+        int nCountActiveSubscribers = 0;
+        int nCountPendingSubscribers = 0;
+        int nCountRecentSendings = 0;
+        List<NewsLetter> listMatchingNewsletters = new ArrayList<>( );
 
         for ( NewsLetter newsletter : listNewsletter )
         {
-            Map<String, Object> newsletterDisplay = new HashMap<String, Object>( );
+            Pair<Integer, Integer> subscriberCounts = mapSubscriberCounts.getOrDefault( newsletter.getId( ), emptyCounts );
+            SendingStatistics sendingStatistics = mapSendingStatistics.getOrDefault( newsletter.getId( ), emptyStatistics );
+            nCountActiveSubscribers += subscriberCounts.getSecond( );
+            nCountPendingSubscribers += subscriberCounts.getFirst( ) - subscriberCounts.getSecond( );
+            nCountRecentSendings += sendingStatistics.getRecentSendings( );
+
+            if ( matchesSearch( newsletter, sendingStatistics.getDateLastSending( ), strSearchName, dateSearch ) )
+            {
+                listMatchingNewsletters.add( newsletter );
+            }
+        }
+
+        _newsletterPager.withBaseUrl( url.getUrl( ) ).withListItem( listMatchingNewsletters ).populateModels( request, model, getLocale( ) );
+        @SuppressWarnings( "unchecked" )
+        List<NewsLetter> listPageNewsletters = (List<NewsLetter>) model.get( MARK_NEWSLETTER_PAGE_ITEMS );
+        List<Map<String, Object>> listNewsletterDisplay = new ArrayList<>( );
+
+        for ( NewsLetter newsletter : listPageNewsletters )
+        {
+            Pair<Integer, Integer> subscriberCounts = mapSubscriberCounts.getOrDefault( newsletter.getId( ), emptyCounts );
+            SendingStatistics sendingStatistics = mapSendingStatistics.getOrDefault( newsletter.getId( ), emptyStatistics );
+            Map<String, Object> newsletterDisplay = new HashMap<>( );
             newsletterDisplay.put( MARK_NEWSLETTER, newsletter );
             newsletterDisplay.put( MARK_NEWSLETTER_ALLOW_CREATION,
                     RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_CREATE, (User) getUser( ) ) );
-
             newsletterDisplay.put( MARK_NEWSLETTER_ALLOW_MANAGE_ARCHIVE,
                     RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ARCHIVE, (User) getUser( ) ) );
-
             newsletterDisplay.put( MARK_NEWSLETTER_ALLOW_DELETION,
                     RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_DELETE, (User) getUser( ) ) );
             newsletterDisplay.put( MARK_NEWSLETTER_ALLOW_MANAGE_SUBSCRIBERS,
@@ -485,7 +564,6 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
             newsletterDisplay.put( MARK_NEWSLETTER_ALLOW_SENDING,
                     RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_SEND, (User) getUser( ) ) );
 
-            // The workgroup description is needed for coherence and not the key
             if ( newsletter.getWorkgroup( ).equals( NewsLetterConstants.ALL_GROUPS ) )
             {
                 newsletterDisplay.put( MARK_NEWSLETTER_WORKGROUP_DESCRIPTION,
@@ -497,272 +575,324 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
                         AdminWorkgroupHome.findByPrimaryKey( newsletter.getWorkgroup( ) ).getDescription( ) );
             }
 
-            newsletterDisplay.put( MARK_NEWSLETTER_COUNT_SUBSCRIBERS, NewsLetterHome.findNbrSubscribers( newsletter.getId( ), getPlugin( ) ) );
+            newsletterDisplay.put( MARK_NEWSLETTER_COUNT_SUBSCRIBERS, subscriberCounts.getFirst( ) );
+            newsletterDisplay.put( MARK_NEWSLETTER_COUNT_ACTIVE_SUBSCRIBERS, subscriberCounts.getSecond( ) );
+            newsletterDisplay.put( MARK_NEWSLETTER_COUNT_SENDINGS, sendingStatistics.getSendings( ) );
+            newsletterDisplay.put( MARK_NEWSLETTER_LAST_SENDING_DATE, sendingStatistics.getDateLastSending( ) );
+            newsletterDisplay.put( MARK_NEWSLETTER_TEMPLATE_DESCRIPTION, mapTemplateDescriptions.get( newsletter.getNewsLetterTemplateId( ) ) );
             listNewsletterDisplay.add( newsletterDisplay );
         }
 
-        IPaginator<Map<String, Object>> paginator = new Paginator<Map<String, Object>>( (List<Map<String, Object>>) listNewsletterDisplay, _nItemsPerPage,
-                url.getUrl( ), PARAMETER_PAGE_INDEX, _strCurrentPageIndex );
-
-        model.put( MARK_NEWSLETTER_LIST, paginator.getPageItems( ) );
-        model.put( MARK_PAGINATOR, paginator );
-        model.put( MARK_ALLOW_CREATION, isNewsletterCreationAllowed( request ) );
-        model.put( MARK_NB_ITEMS_PER_PAGE, StringUtils.EMPTY + _nItemsPerPage );
+        model.put( MARK_NEWSLETTER_LIST, listNewsletterDisplay );
+        model.put( MARK_COUNT_NEWSLETTERS, listNewsletter.size( ) );
+        model.put( MARK_COUNT_ACTIVE_SUBSCRIBERS, nCountActiveSubscribers );
+        model.put( MARK_COUNT_PENDING_SUBSCRIBERS, nCountPendingSubscribers );
+        model.put( MARK_COUNT_RECENT_SENDINGS, nCountRecentSendings );
+        model.put( MARK_SEARCH_NAME, strSearchName );
+        model.put( MARK_SEARCH_DATE, ( dateSearch != null ) ? java.sql.Date.valueOf( dateSearch ) : null );
+        model.put( MARK_ALLOW_CREATION, isNewsletterCreationAllowed( ) );
         model.put( MARK_RIGHT_MANAGE_NEWSLETTER_PROPERTIES, RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, RBAC.WILDCARD_RESOURCES_ID,
                 NewsletterResourceIdService.PERMISSION_NEWSLETTER_ADVANCED_SETTINGS, (User) getUser( ) ) );
 
-        // Collection refListAllTemplates = NewsLetterTemplateHome.getTemplatesList( getPlugin( ) );
-        HtmlTemplate templateList = AppTemplateService.getTemplate( TEMPLATE_MANAGE_NEWSLETTERS, getLocale( ), model );
-
-        return getAdminPage( templateList.getHtml( ) );
-    }
-
-    /**
-     * Keeps the newsletters whose name contains the searched text and whose last sending is on the searched day
-     *
-     * @param listNewsletter
-     *            the newsletters
-     * @param strSearchName
-     *            the searched text, blank for every name
-     * @param strSearchDate
-     *            the searched day (yyyy-MM-dd or dd/MM/yyyy), blank for every date
-     * @return the matching newsletters
-     */
-    static Collection<NewsLetter> filterNewsletters( Collection<NewsLetter> listNewsletter, String strSearchName, String strSearchDate )
-    {
-        LocalDate searchDate = parseSearchDate( strSearchDate );
-
-        return listNewsletter.stream( )
-                .filter( n -> StringUtils.isBlank( strSearchName ) || StringUtils.containsIgnoreCase( n.getName( ), strSearchName.trim( ) ) )
-                .filter( n -> searchDate == null
-                        || ( n.getDateLastSending( ) != null && searchDate.equals( n.getDateLastSending( ).toLocalDateTime( ).toLocalDate( ) ) ) )
-                .collect( Collectors.toList( ) );
-    }
-
-    /**
-     * Reads the searched day
-     *
-     * @param strSearchDate
-     *            the searched day (yyyy-MM-dd or dd/MM/yyyy)
-     * @return the day, or null when blank or not a date
-     */
-    private static LocalDate parseSearchDate( String strSearchDate )
-    {
-        if ( StringUtils.isBlank( strSearchDate ) )
-        {
-            return null;
-        }
-        for ( DateTimeFormatter formatter : new DateTimeFormatter [ ] { DateTimeFormatter.ISO_LOCAL_DATE, DateTimeFormatter.ofPattern( "dd/MM/yyyy" ) } )
-        {
-            try
-            {
-                return LocalDate.parse( strSearchDate.trim( ), formatter );
-            }
-            catch( DateTimeParseException e )
-            {
-                // tries the next format
-            }
-        }
-        return null;
+        return getPage( PROPERTY_PAGE_TITLE_NEWSLETTERS, TEMPLATE_MANAGE_NEWSLETTERS );
     }
 
     /**
      * Returns the list of old newsletters
-     * 
+     *
      * @param request
      *            the HTTP request
+     * @param model
+     *            the model of the page
      * @return the html code for display the newsletters list
      */
-    public String getManageArchive( HttpServletRequest request )
+    @View( VIEW_MANAGE_ARCHIVE )
+    public String getManageArchive( HttpServletRequest request, Models model )
     {
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_ARCHIVE );
-        _strCurrentPageIndex = Paginator.getPageIndex( request, Paginator.PARAMETER_PAGE_INDEX, _strCurrentPageIndex );
-        _nItemsPerPage = Paginator.getItemsPerPage( request, Paginator.PARAMETER_ITEMS_PER_PAGE, _nItemsPerPage, _nDefaultItemsPerPage );
+        NewsLetter newsletter = findNewsletter( request );
 
-        int nIdNewsletter = Integer.parseInt( request.getParameter( PARAMETER_NEWSLETTER_ID ) );
-        Map<String, Object> model = new HashMap<String, Object>( );
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ARCHIVE ) )
+        {
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
+        }
+
+        int nIdNewsletter = newsletter.getId( );
         List<SendingNewsLetter> listNewsletter = SendingNewsLetterHome.findAllLastSendingForNewsletterId( nIdNewsletter, getPlugin( ) );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nIdNewsletter, getPlugin( ) );
 
-        UrlItem url = new UrlItem( request.getRequestURI( ) );
+        UrlItem url = new UrlItem( getViewFullUrl( VIEW_MANAGE_ARCHIVE ) );
         url.addParameter( PARAMETER_NEWSLETTER_ID, nIdNewsletter );
 
-        IPaginator<SendingNewsLetter> paginator = new Paginator<SendingNewsLetter>( listNewsletter, _nItemsPerPage, url.getUrl( ), PARAMETER_PAGE_INDEX,
-                _strCurrentPageIndex );
+        _archivePager.withBaseUrl( url.getUrl( ) ).withListItem( listNewsletter ).populateModels( request, model, getLocale( ) );
 
-        model.put( MARK_NEWSLETTER_LIST, paginator.getPageItems( ) );
-        model.put( MARK_PAGINATOR, paginator );
         model.put( MARK_NEWSLETTER_ID, nIdNewsletter );
-        model.put( MARK_NEWSLETTER_NAME, newsletter != null ? newsletter.getName( ) : StringUtils.EMPTY );
-        model.put( MARK_NB_ITEMS_PER_PAGE, StringUtils.EMPTY + _nItemsPerPage );
+        model.put( MARK_NEWSLETTER, newsletter );
+        fillNewsletterTabsModel( model, newsletter );
 
-        HtmlTemplate templateList = AppTemplateService.getTemplate( TEMPLATE_MANAGE_OLD_NEWSLETTERS, getLocale( ), model );
-
-        return getAdminPage( templateList.getHtml( ) );
+        return getPage( PROPERTY_PAGE_TITLE_ARCHIVE, TEMPLATE_MANAGE_OLD_NEWSLETTERS );
     }
 
     /**
      * Returns the newsletters properties
-     * 
+     *
      * @param request
      *            the HTTP request
+     * @param model
+     *            the model of the page
      * @return the html code for display the newsletters list
      * @throws AccessDeniedException
      *             If the user is not allowed to acces the feature
      */
-    public String getManageNewsLettersProperties( HttpServletRequest request ) throws AccessDeniedException
+    @View( VIEW_MANAGE_PROPERTIES )
+    public String getManageNewsLettersProperties( HttpServletRequest request, Models model ) throws AccessDeniedException
     {
-        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, RBAC.WILDCARD_RESOURCES_ID,
-                NewsletterResourceIdService.PERMISSION_NEWSLETTER_ADVANCED_SETTINGS, (User) getUser( ) ) )
-        {
-            throw new AccessDeniedException( MESSAGE_USER_NOT_ALLOWED_NEWSLETTER_PROPERTIES + AdminUserService.getAdminUser( request ).getAccessCode( ) );
-        }
-
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_NEWSLETTERS_PROPERTIES );
-
-        Map<String, Object> model = new HashMap<String, Object>( );
+        checkAdvancedSettingsPermission( request );
 
         NewsLetterProperties properties = NewsletterPropertiesHome.find( getPlugin( ) );
 
-        model.put( MARK_IS_ACTIVE_CAPTCHA, PluginService.isPluginEnable( JCAPTCHA_PLUGIN ) );
+        model.put( MARK_IS_ACTIVE_CAPTCHA, _registrationService.isCaptchaAvailable( ) );
         model.put( MARK_WEBAPP_URL, AppPathService.getBaseUrl( request ) );
         model.put( MARK_LOCALE, getLocale( ).getLanguage( ) );
         model.put( MARK_PROPERTIES, properties );
-        model.put( MARK_CLEAN_RIGHT,
-                RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, null, NewsletterResourceIdService.PERMISSION_CLEAN_SUBSCRIBERS, (User) getUser( ) ) );
+        model.put( MARK_EDITORS_LIST, buildEditorList( ) );
+        model.put( MARK_CLEAN_RIGHT, isCleanSubscribersAllowed( ) );
 
-        HtmlTemplate templateList = AppTemplateService.getTemplate( TEMPLATE_MANAGE_NEWSLETTERS_PROPERTIES, getLocale( ), model );
-
-        return getAdminPage( templateList.getHtml( ) );
+        return getPage( PROPERTY_PAGE_TITLE_NEWSLETTERS_PROPERTIES, TEMPLATE_MANAGE_NEWSLETTERS_PROPERTIES );
     }
 
     /**
      * Processes the update form of the newsletter properties
-     * 
+     *
      * @param request
      *            The Http request
-     * @return The jsp URL which displays the view of all newsletter
+     * @return The redirection to the newsletters list
      * @throws AccessDeniedException
      *             If the user is not allowed to acces the feature
      */
+    @Action( ACTION_MODIFY_PROPERTIES )
     public String doManageNewsLetterProperties( HttpServletRequest request ) throws AccessDeniedException
     {
-        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, RBAC.WILDCARD_RESOURCES_ID,
-                NewsletterResourceIdService.PERMISSION_NEWSLETTER_ADVANCED_SETTINGS, (User) getUser( ) ) )
-        {
-            throw new AccessDeniedException( MESSAGE_USER_NOT_ALLOWED_NEWSLETTER_PROPERTIES + AdminUserService.getAdminUser( request ).getAccessCode( ) );
-        }
+        checkAdvancedSettingsPermission( request );
+
         String strBaseUrl = AppPathService.getBaseUrl( request );
-        String strActiveCaptcha = request.getParameter( PARAMETER_ACTIVE_CAPTCHA );
-        String strActiveValidation = request.getParameter( PARAMETER_ACTIVE_VALIDATION );
-
         NewsLetterProperties properties = new NewsLetterProperties( );
-
         properties.setTOS( doClean( request.getParameter( PARAMETER_TERM_OF_SERVICE ), strBaseUrl ) );
-
-        if ( strActiveCaptcha != null )
-        {
-            properties.setCaptchaActive( true );
-        }
-        else
-        {
-            properties.setCaptchaActive( false );
-        }
-
-        if ( strActiveValidation != null )
-        {
-            properties.setValidationActive( true );
-        }
-        else
-        {
-            properties.setValidationActive( false );
-        }
+        properties.setCaptchaActive( request.getParameter( PARAMETER_ACTIVE_CAPTCHA ) != null );
+        properties.setValidationActive( request.getParameter( PARAMETER_ACTIVE_VALIDATION ) != null );
+        properties.setEditor( buildEditorList( ).toMap( ).containsKey( request.getParameter( PARAMETER_EDITOR ) ) ? request.getParameter( PARAMETER_EDITOR )
+                : NewsLetterProperties.EDITOR_GRAPESJS );
 
         NewsletterPropertiesHome.update( properties, getPlugin( ) );
 
-        UrlItem url = new UrlItem( JSP_URL_MANAGE_NEWSLETTER );
+        return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
+    }
 
-        return url.getUrl( );
+    /**
+     * Asks the confirmation of the cleaning of the subscribers who did not confirm their subscription in time. The cleaning returns to the
+     * subscribers of all the newsletters when the request comes from them.
+     *
+     * @param request
+     *            The Http request
+     * @return the url of the confirmation message
+     */
+    @View( value = VIEW_CONFIRM_CLEAN_SUBSCRIBERS, securityTokenAction = ACTION_CLEAN_SUBSCRIBERS )
+    public String getConfirmCleanSubscribers( HttpServletRequest request )
+    {
+        if ( !isCleanSubscribersAllowed( ) )
+        {
+            return redirectAccessDenied( request );
+        }
+
+        Object [ ] messageArgs = {
+                Integer.toString( _nConfirmLimit )
+        };
+
+        UrlItem url = new UrlItem( getActionUrl( ACTION_CLEAN_SUBSCRIBERS ) );
+
+        if ( isReturnToSubscribers( request ) )
+        {
+            url.addParameter( PARAMETER_RETURN_VIEW, VALUE_RETURN_SUBSCRIBERS );
+        }
+
+        return redirect( request,
+                AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_CLEAN_SUBSCRIBERS, messageArgs, url.getUrl( ), AdminMessage.TYPE_CONFIRMATION ) );
+    }
+
+    /**
+     * Processes subscribers cleaning
+     *
+     * @param request
+     *            The Http request
+     * @return the url of the result message
+     */
+    @Action( ACTION_CLEAN_SUBSCRIBERS )
+    public String doCleanSubscribers( HttpServletRequest request )
+    {
+        if ( !isCleanSubscribersAllowed( ) )
+        {
+            return redirectAccessDenied( request );
+        }
+
+        _registrationService.doRemoveOldUnconfirmed( );
+
+        Object [ ] messages = {
+                Integer.toString( _nConfirmLimit )
+        };
+
+        String strBackUrl = isReturnToSubscribers( request ) ? SubscriberJspBean.CONTROLLER_PATH + SubscriberJspBean.CONTROLLER_JSP
+                : getViewFullUrl( VIEW_MANAGE_PROPERTIES );
+
+        return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_SUBSCRIBERS_CLEANED, messages, strBackUrl, AdminMessage.TYPE_INFO ) );
+    }
+
+    /**
+     * Tells whether the cleaning of the subscribers has been asked from the subscribers of all the newsletters
+     *
+     * @param request
+     *            The Http request
+     * @return true if the cleaning returns to the subscribers of all the newsletters
+     */
+    private static boolean isReturnToSubscribers( HttpServletRequest request )
+    {
+        return VALUE_RETURN_SUBSCRIBERS.equals( request.getParameter( PARAMETER_RETURN_VIEW ) );
     }
 
     /**
      * Returns the newsletter form for creation
-     * 
+     *
      * @param request
      *            The Http request
+     * @param model
+     *            the model of the page
      * @return the html code of the newsletter form
      */
-    public String getCreateNewsLetter( HttpServletRequest request )
+    @View( VIEW_CREATE_NEWSLETTER )
+    public String getCreateNewsLetter( HttpServletRequest request, Models model )
     {
-        // RBAC permission
-        if ( !isNewsletterCreationAllowed( request ) )
+        if ( !isNewsletterCreationAllowed( ) )
         {
-            return getManageNewsLetters( request );
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
         }
-
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_CREATE );
-
-        Map<String, Object> model = new HashMap<String, Object>( );
-
-        // get the list of document lists
-        ReferenceList listUnsubscribe = new ReferenceList( );
-        listUnsubscribe.addItem( NewsLetterConstants.PROPERTY_UNSUBSCRIBE_TRUE,
-                I18nService.getLocalizedString( PROPERTY_LABEL_UNSUBSCRIBE_TRUE, getLocale( ) ) );
-        listUnsubscribe.addItem( NewsLetterConstants.PROPERTY_UNSUBSCRIBE_FALSE,
-                I18nService.getLocalizedString( PROPERTY_LABEL_UNSUBSCRIBE_FALSE, getLocale( ) ) );
-
-        String strBaseUrl = AppPathService.getProdUrl( request );
 
         model.put( MARK_DATE_LAST_SEND, DateUtil.getCurrentDateString( getLocale( ) ) );
         model.put( MARK_WORKGROUP_LIST, AdminWorkgroupService.getUserWorkgroups( getUser( ), getLocale( ) ) );
-        model.put( MARK_UNSUBSCRIBE_LIST, listUnsubscribe );
+        model.put( MARK_UNSUBSCRIBE_LIST, buildUnsubscribeList( NewsLetterConstants.PROPERTY_UNSUBSCRIBE_TRUE, NewsLetterConstants.PROPERTY_UNSUBSCRIBE_FALSE ) );
         model.put( MARK_LOCALE, getLocale( ) );
-        model.put( MARK_WEBAPP_URL, strBaseUrl );
+        model.put( MARK_WEBAPP_URL, AppPathService.getProdUrl( request ) );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_CREATE_NEWSLETTER, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
+        return getPage( PROPERTY_PAGE_TITLE_CREATE, TEMPLATE_CREATE_NEWSLETTER );
     }
 
     /**
-     * Returns the newsletter form of newsletter composition
-     * 
+     * Processes the creation form of a new newsletter
+     *
      * @param request
-     *            The Http rquest
-     * @return the html code of the newsletter composition form
+     *            The Http request
+     * @return The redirection to the newsletters list, or the url of the error message
      */
-    public String getComposeNewsLetter( HttpServletRequest request )
+    @Action( ACTION_CREATE_NEWSLETTER )
+    public String doCreateNewsLetter( HttpServletRequest request )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsLetterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsLetterId, getPlugin( ) );
-        AdminUser user = getUser( );
+        String strNewsletterName = request.getParameter( PARAMETER_NEWSLETTER_NAME );
+        String strNewsletterDescription = request.getParameter( PARAMETER_NEWSLETTER_DESCRIPTION );
+        String strDateFirstSend = request.getParameter( PARAMETER_DATE_FIRST_SEND );
+        String strWorkGroup = request.getParameter( PARAMETER_NEWSLETTER_WORKGROUP );
+        String strSenderName = request.getParameter( PARAMETER_NEWSLETTER_SENDER_NAME );
+        String strSenderMail = request.getParameter( PARAMETER_NEWSLETTER_SENDER_MAIL );
+        String strTestRecipients = request.getParameter( PARAMETER_TEST_RECIPIENTS );
+        String strTestSubject = request.getParameter( PARAMETER_TEST_SUBJECT );
 
-        // RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( !isNewsletterCreationAllowed( ) )
         {
-            return getManageNewsLetters( request );
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
         }
 
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_COMPOSE );
+        if ( StringUtils.isEmpty( strSenderMail ) || StringUtils.isEmpty( strTestRecipients ) || StringUtils.isEmpty( strNewsletterName )
+                || StringUtils.isEmpty( strDateFirstSend ) || StringUtils.isEmpty( strWorkGroup ) || StringUtils.isEmpty( strSenderName ) )
+        {
+            return redirectMessage( request, Messages.MANDATORY_FIELDS );
+        }
+
+        String strMessageParam = null;
+        String strMessage = null;
+
+        String strWrongEmail = isWrongEmail( strTestRecipients );
+        if ( StringUtils.isNotEmpty( strWrongEmail ) )
+        {
+            strMessageParam = strWrongEmail;
+            strMessage = MESSAGE_WRONG_EMAIL;
+        }
+
+        if ( strMessageParam == null && !StringUtil.checkEmail( strSenderMail ) )
+        {
+            strMessageParam = strSenderMail;
+            strMessage = MESSAGE_WRONG_EMAIL_SENDER;
+        }
+
+        if ( strMessageParam != null )
+        {
+            Object [ ] messageArgs = {
+                    strMessageParam
+            };
+            return redirect( request, AdminMessageService.getMessageUrl( request, strMessage, messageArgs, AdminMessage.TYPE_STOP ) );
+        }
+
+        Date date = DateUtil.parseIsoDate( strDateFirstSend );
+
+        if ( date == null )
+        {
+            return redirectMessage( request, MESSAGE_WRONG_DATE_LAST_SEND );
+        }
+
+        NewsLetter newsletter = new NewsLetter( );
+        newsletter.setName( strNewsletterName );
+        newsletter.setDateLastSending( new Timestamp( date.getTime( ) ) );
+        newsletter.setDescription( strNewsletterDescription );
+        newsletter.setWorkgroup( strWorkGroup );
+        newsletter.setTestRecipients( strTestRecipients );
+        newsletter.setTestSubject( strTestSubject );
+        newsletter.setNewsletterSenderMail( strSenderMail );
+        newsletter.setNewsletterSenderName( strSenderName );
+        newsletter.setNbSections( 1 );
+        newsletter.setUnsubscribe( request.getParameter( PARAMETER_NEWSLETTER_UNSUBSCRIBE ) );
+
+        NewsLetterHome.create( newsletter, getPlugin( ) );
+
+        return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
+    }
+
+    /**
+     * Returns the newsletter form of newsletter composition. The composition needs at least one newsletter template.
+     *
+     * @param request
+     *            The Http rquest
+     * @param model
+     *            the model of the page
+     * @return the html code of the newsletter composition form
+     */
+    @View( value = VIEW_COMPOSE_NEWSLETTER, securityTokenAction = ACTION_REGISTER_NEWSLETTER )
+    public String getComposeNewsLetter( HttpServletRequest request, Models model )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+        AdminUser user = getUser( );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
+        {
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
+        }
+
+        if ( NewsLetterTemplateHome.getTemplatesCollectionByType( NewsLetterTemplate.RESOURCE_TYPE, getPlugin( ) ).isEmpty( ) )
+        {
+            return redirectMessage( request, MESSAGE_NO_TEMPLATE );
+        }
 
         String strBaseUrl = AppPathService.getProdUrl( request );
-
-
-        String strPathImageTemplate = getNewsletterService().getImageFolderPath( AppPathService.getBaseUrl( request ) );
-
-        Map<String, Object> model = new HashMap<String, Object>( );
-
-        // Fills the template with specific values
-        String strGenerate = request.getParameter( PARAMETER_GENERATE );
+        String strPathImageTemplate = _newsletterService.getImageFolderPath( AppPathService.getBaseUrl( request ) );
 
         int nTemplateNewsLetterId = newsletter.getNewsLetterTemplateId( );
         String strHtmlContent = null;
 
-        if ( ( strGenerate == null ) )
+        if ( request.getParameter( PARAMETER_GENERATE ) == null )
         {
-
             strHtmlContent = ( newsletter.getHtml( ) == null ) ? NewsLetterConstants.CONSTANT_EMPTY_STRING : newsletter.getHtml( );
         }
         else
@@ -784,228 +914,79 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
             }
             if ( nTemplateNewsLetterId > 0 )
             {
-                strHtmlContent = getNewsletterService().generateNewsletterHtmlCode( newsletter, nTemplateNewsLetterId, strBaseUrl, user, getLocale( ) );
+                strHtmlContent = _newsletterService.generateNewsletterHtmlCode( newsletter, nTemplateNewsLetterId, strBaseUrl, user, getLocale( ) );
             }
             if ( strHtmlContent == null )
             {
-                strHtmlContent = NewsLetterConstants.CONSTANT_EMPTY_STRING; // if no template available (newsletter and/or document), return an empty html
-                                                                            // content
+                strHtmlContent = NewsLetterConstants.CONSTANT_EMPTY_STRING;
             }
         }
 
         strHtmlContent = strHtmlContent.replaceAll( NewsLetterConstants.MARK_BASE_URL, strBaseUrl );
-
         strHtmlContent = strHtmlContent.replaceAll( NewsLetterConstants.WEBAPP_PATH_FOR_LINKSERVICE, strBaseUrl );
 
-        model.put( MARK_HTML_CONTENT, strHtmlContent );
-
+        model.put( MARK_HTML_CONTENT, toMarkup( strHtmlContent ) );
+        model.put( MARK_LUTECE_PROD_URL, _newsletterService.getProdUrl( ) );
         model.put( MARK_NEWSLETTER, newsletter );
         model.put( MARK_NEWSLETTER_TEMPLATE_ID, nTemplateNewsLetterId );
-
         model.put( MARK_WEBAPP_URL, AppPathService.getBaseUrl( request ) );
         model.put( MARK_LOCALE, getLocale( ).getLanguage( ) );
         model.put( MARK_IMG_PATH, strPathImageTemplate );
+        NewsLetterProperties properties = NewsletterPropertiesHome.find( getPlugin( ) );
+        String strEditor = getChosenEditor( properties );
+        model.put( MARK_LUTECE_EDITOR, properties.isLuteceEditor( ) );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_COMPOSE_NEWSLETTER, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
-    }
-
-    /**
-     * Returns the newsletter form of newsletter composition
-     * 
-     * @param request
-     *            The Http rquest
-     * @return the html code of the newsletter composition form
-     */
-    public String doComposeNewsLetter( HttpServletRequest request )
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsLetterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsLetterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( StringUtils.isNotEmpty( strEditor ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            model.put( MARK_NEWSLETTER_EDITOR, strEditor );
+            model.put( MARK_TEXT_EDITOR_PROFILE, buildEditorProfile( strEditor ) );
         }
+        fillNewsletterTabsModel( model, newsletter );
 
-        Collection<NewsLetterTemplate> newsletterTemplatesList = NewsLetterTemplateHome.getTemplatesCollectionByType( NewsLetterTemplate.RESOURCE_TYPE,
-                getPlugin( ) );
-
-        // composition not possible if not at least one template for newsletter
-        if ( ( newsletterTemplatesList.size( ) == 0 ) )
-        {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_NO_TEMPLATE, AdminMessage.TYPE_STOP );
-        }
-
-        UrlItem url = new UrlItem( JSP_URL_DO_COMPOSE_NEWSLETTER );
-        url.addParameter( PARAMETER_NEWSLETTER_ID, strNewsletterId );
-
-        return url.getUrl( );
-    }
-
-    /**
-     * Processes subscribers cleaning
-     * 
-     * @param request
-     *            The Http request
-     * @return The jsp URL
-     */
-    public String doCleanSubscribers( HttpServletRequest request )
-    {
-        // RBAC permissions, the user must have the right "clean subscribers" on all newsletters
-        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, null, NewsletterResourceIdService.PERMISSION_CLEAN_SUBSCRIBERS, (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        getRegistrationService().doRemoveOldUnconfirmed( );
-
-        int nConfirmLimit = AppPropertiesService.getPropertyInt( PROPERTY_LIMIT_CONFIRM_DAYS, DEFAULT_LIMIT );
-        Object [ ] messages = new String [ 1];
-        messages [0] = Integer.toString( nConfirmLimit );
-
-        return AdminMessageService.getMessageUrl( request, MESSAGE_SUBSCRIBERS_CLEANED, messages, AdminMessage.TYPE_INFO );
-    }
-
-    /**
-     * Processes the creation form of a new newsletter
-     * 
-     * @param request
-     *            The Http request
-     * @return The jsp URL which displays the view of the created newsletter
-     */
-    public String doCreateNewsLetter( HttpServletRequest request )
-    {
-        // retrieve name and date
-        String strNewsletterName = request.getParameter( PARAMETER_NEWSLETTER_NAME );
-        String strNewsletterDescription = request.getParameter( PARAMETER_NEWSLETTER_DESCRIPTION );
-        String strDateFirstSend = request.getParameter( PARAMETER_DATE_FIRST_SEND );
-        String strWorkGroup = request.getParameter( PARAMETER_NEWSLETTER_WORKGROUP );
-        String strSenderName = request.getParameter( PARAMETER_NEWSLETTER_SENDER_NAME );
-        String strSenderMail = request.getParameter( PARAMETER_NEWSLETTER_SENDER_MAIL );
-        String strTestRecipients = request.getParameter( PARAMETER_TEST_RECIPIENTS );
-        String strTestSubject = request.getParameter( PARAMETER_TEST_SUBJECT );
-
-        // RBAC permission
-        if ( !isNewsletterCreationAllowed( request ) )
-        {
-            return getManageNewsLetters( request );
-        }
-
-        // Mandatory fields
-        if ( StringUtils.isEmpty( strSenderMail ) || StringUtils.isEmpty( strTestRecipients ) || StringUtils.isEmpty( strNewsletterName )
-                || StringUtils.isEmpty( strDateFirstSend ) || StringUtils.isEmpty( strWorkGroup ) || StringUtils.isEmpty( strSenderName ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.MANDATORY_FIELDS, AdminMessage.TYPE_STOP );
-        }
-
-        String strMessageParam = null;
-        String strMessage = null;
-
-        String strWrongEmail = isWrongEmail( strTestRecipients );
-        if ( StringUtils.isNotEmpty( strWrongEmail ) )
-        {
-            strMessageParam = strWrongEmail;
-            strMessage = MESSAGE_WRONG_EMAIL;
-        }
-
-        if ( strMessageParam == null && strMessage == null && !StringUtil.checkEmail( strSenderMail ) )
-        {
-            strMessageParam = strSenderMail;
-            strMessage = MESSAGE_WRONG_EMAIL_SENDER;
-        }
-
-        if ( strMessageParam != null && strMessage != null )
-        {
-            Object [ ] messageArgs = {
-                    strMessageParam
-            };
-            return AdminMessageService.getMessageUrl( request, strMessage, messageArgs, AdminMessage.TYPE_STOP );
-        }
-
-        NewsLetter newsletter = new NewsLetter( );
-        newsletter.setName( strNewsletterName );
-
-        Date date = DateUtil.parseIsoDate( strDateFirstSend );
-        Timestamp dateFirstSend = date == null ? null : new Timestamp(date.getTime());
-
-        if ( dateFirstSend != null )
-        {
-            newsletter.setDateLastSending( dateFirstSend );
-        }
-        else
-        {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_WRONG_DATE_LAST_SEND, AdminMessage.TYPE_STOP );
-        }
-
-        newsletter.setDescription( strNewsletterDescription );
-        newsletter.setWorkgroup( strWorkGroup );
-        newsletter.setTestRecipients( strTestRecipients );
-        newsletter.setTestSubject( strTestSubject );
-        newsletter.setNewsletterSenderMail( strSenderMail );
-        newsletter.setNewsletterSenderName( strSenderName );
-        newsletter.setNbSections( 1 );
-        newsletter.setUnsubscribe( request.getParameter( PARAMETER_NEWSLETTER_UNSUBSCRIBE ) );
-
-        NewsLetterHome.create( newsletter, getPlugin( ) );
-
-        return getHomeUrl( request );
+        return getPage( PROPERTY_PAGE_TITLE_COMPOSE, TEMPLATE_COMPOSE_NEWSLETTER );
     }
 
     /**
      * Returns the newsletter form for modification
-     * 
+     *
      * @param request
      *            The Http request
+     * @param model
+     *            the model of the page
      * @return the html code of the newsletter form
      */
-    public String getModifyNewsLetter( HttpServletRequest request )
+    @View( VIEW_MODIFY_NEWSLETTER )
+    public String getModifyNewsLetter( HttpServletRequest request, Models model )
     {
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_MODIFY );
+        NewsLetter newsletter = findNewsletter( request );
 
-        Map<String, Object> model = new HashMap<String, Object>( );
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
         {
-            return getManageNewsLetters( request );
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
         }
-
-        ReferenceList listUnsubscribe = new ReferenceList( );
-        listUnsubscribe.addItem( "TRUE", I18nService.getLocalizedString( PROPERTY_LABEL_UNSUBSCRIBE_TRUE, getLocale( ) ) );
-        listUnsubscribe.addItem( "FALSE", I18nService.getLocalizedString( PROPERTY_LABEL_UNSUBSCRIBE_FALSE, getLocale( ) ) );
-
-        String strBaseUrl = AppPathService.getProdUrl( request );
 
         model.put( MARK_NEWSLETTER, newsletter );
         model.put( MARK_NEWSLETTER_DESCRIPTION, newsletter.getDescription( ) );
         model.put( MARK_DATE_LAST_SENDING, DateUtil.getDateString( newsletter.getDateLastSending( ), getLocale( ) ) );
         model.put( MARK_WORKGROUP_LIST, AdminWorkgroupService.getUserWorkgroups( getUser( ), getLocale( ) ) );
-        model.put( MARK_UNSUBSCRIBE_LIST, listUnsubscribe );
+        model.put( MARK_UNSUBSCRIBE_LIST, buildUnsubscribeList( "TRUE", "FALSE" ) );
         model.put( MARK_LOCALE, getLocale( ) );
-        model.put( MARK_WEBAPP_URL, strBaseUrl );
+        model.put( MARK_WEBAPP_URL, AppPathService.getProdUrl( request ) );
+        fillNewsletterTabsModel( model, newsletter );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_MODIFY_NEWSLETTER, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
+        return getPage( PROPERTY_PAGE_TITLE_MODIFY, TEMPLATE_MODIFY_NEWSLETTER );
     }
 
     /**
      * Processes the update form of the newsletter whose identifier is in the http request
-     * 
+     *
      * @param request
      *            The Http request
-     * @return The jsp URL which displays the view of the updated newsletter
+     * @return The redirection to the newsletters list, or the url of the error message
      */
+    @Action( ACTION_MODIFY_NEWSLETTER )
     public String doModifyNewsLetter( HttpServletRequest request )
     {
-        // retrieve the required parameters
         String strSenderName = request.getParameter( PARAMETER_NEWSLETTER_SENDER_NAME );
         String strSenderMail = request.getParameter( PARAMETER_NEWSLETTER_SENDER_MAIL );
         String strNewsletterName = request.getParameter( PARAMETER_NEWSLETTER_NAME );
@@ -1013,23 +994,18 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
         String strWorkGroup = request.getParameter( PARAMETER_NEWSLETTER_WORKGROUP );
         String strDateLastSend = request.getParameter( PARAMETER_DATE_LAST_SEND );
         String strTestRecipients = request.getParameter( PARAMETER_TEST_RECIPIENTS );
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
         String strTestSubject = request.getParameter( PARAMETER_TEST_SUBJECT );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // RBAC permission
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        // Mandatory fields
         if ( StringUtils.isEmpty( strSenderMail ) || StringUtils.isEmpty( strTestRecipients ) || StringUtils.isEmpty( strNewsletterName )
                 || StringUtils.isEmpty( strDateLastSend ) || StringUtils.isEmpty( strWorkGroup ) || StringUtils.isEmpty( strSenderName ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.MANDATORY_FIELDS, AdminMessage.TYPE_STOP );
+            return redirectMessage( request, Messages.MANDATORY_FIELDS );
         }
 
         strTestRecipients = cleanEmails( strTestRecipients );
@@ -1041,7 +1017,7 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
                     strWrongMail
             };
 
-            return AdminMessageService.getMessageUrl( request, MESSAGE_WRONG_EMAIL, messageArgs, AdminMessage.TYPE_STOP );
+            return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_WRONG_EMAIL, messageArgs, AdminMessage.TYPE_STOP ) );
         }
 
         if ( !StringUtil.checkEmail( strSenderMail ) )
@@ -1050,307 +1026,207 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
                     strSenderMail
             };
 
-            return AdminMessageService.getMessageUrl( request, MESSAGE_WRONG_EMAIL_SENDER, messageArgs, AdminMessage.TYPE_STOP );
+            return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_WRONG_EMAIL_SENDER, messageArgs, AdminMessage.TYPE_STOP ) );
         }
 
         newsletter.setName( strNewsletterName );
         newsletter.setDescription( strNewsletterDescription );
-        newsletter.setWorkgroup( strWorkGroup );
         newsletter.setTestRecipients( strTestRecipients );
         newsletter.setTestSubject( strTestSubject );
         newsletter.setNewsletterSenderMail( strSenderMail );
         newsletter.setNewsletterSenderName( strSenderName );
 
-        Date date = DateUtil.parseIsoDate(strDateLastSend);
-        Timestamp dateLastSend = date == null ? null : new Timestamp(date.getTime());
+        Date date = DateUtil.parseIsoDate( strDateLastSend );
 
-        if ( dateLastSend != null )
+        if ( date != null )
         {
-            newsletter.setDateLastSending( dateLastSend );
+            newsletter.setDateLastSending( new Timestamp( date.getTime( ) ) );
         }
 
         newsletter.setUnsubscribe( request.getParameter( PARAMETER_NEWSLETTER_UNSUBSCRIBE ) );
-        newsletter.setWorkgroup( request.getParameter( PARAMETER_NEWSLETTER_WORKGROUP ) );
+        newsletter.setWorkgroup( strWorkGroup );
 
-        // if not, newsletter.getDateLastSending keeps its value
         NewsLetterHome.update( newsletter, getPlugin( ) );
 
-        return JSP_URL_MANAGE_NEWSLETTER;
+        return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
     }
 
     /**
-     * Remove spaces from a recipient list
-     * 
-     * @param strRecipientLists
-     *            The recipient list
-     * @return the recipient list without spaces before and after each email.
-     */
-    private String cleanEmails( String strRecipientLists )
-    {
-        StringBuffer strCleanTestRecipients = new StringBuffer( );
-        String strDelimiter = AppPropertiesService.getProperty( PROPERTY_IMPORT_DELIMITER );
-
-        String [ ] strEmails = strRecipientLists.split( strDelimiter );
-
-        for ( String email : strEmails )
-        {
-            strCleanTestRecipients.append( email.trim( ) );
-            strCleanTestRecipients.append( strDelimiter );
-        }
-
-        return strCleanTestRecipients.toString( );
-    }
-
-    /**
-     * Manages the removal form of a newsletter whose identifier is in the http request
-     * 
+     * Asks the confirmation of the unregistration of a subscriber
+     *
      * @param request
      *            The Http request
-     * @return the html code to confirm
+     * @return the url of the confirmation message
      */
+    @View( value = VIEW_CONFIRM_REMOVE_SUBSCRIBER, securityTokenAction = ACTION_REMOVE_SUBSCRIBER )
     public String getConfirmRemoveSubscriber( HttpServletRequest request )
     {
-        UrlItem urlItem = new UrlItem( JSP_URL_DO_REMOVE_SUBSCRIBER );
-        int nNewsletterId = Integer.parseInt( request.getParameter( PARAMETER_NEWSLETTER_ID ) );
-        int nSubscriberId = Integer.parseInt( request.getParameter( PARAMETER_SUBSCRIBER_ID ) );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-        urlItem.addParameter( PARAMETER_SUBSCRIBER_ID, nSubscriberId );
+        NewsLetter newsletter = findNewsletter( request );
 
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_SUBSCRIBER, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
+        String strSubscriberId = request.getParameter( PARAMETER_SUBSCRIBER_ID );
+        Subscriber subscriber = StringUtils.isNumeric( strSubscriberId ) ? SubscriberHome.findByPrimaryKey( Integer.parseInt( strSubscriberId ), getPlugin( ) )
+                : null;
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS ) || subscriber == null )
+        {
+            return redirectAccessDenied( request );
+        }
+
+        UrlItem urlItem = new UrlItem( getActionUrl( ACTION_REMOVE_SUBSCRIBER ) );
+        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+        urlItem.addParameter( PARAMETER_SUBSCRIBER_ID, subscriber.getId( ) );
+
+        return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_SUBSCRIBER, new Object [ ] {
+                subscriber.getEmail( )
+        }, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION ) );
     }
 
     /**
-     * Manages the removal form of a newsletter whose identifier is in the http for selected users request
-     * 
+     * Asks the confirmation of the unregistration of the subscribers selected in the list; the selection is kept until the action
+     *
      * @param request
      *            The Http request
-     * @return the html code to confirm
+     * @return the url of the confirmation message
      */
+    @View( value = VIEW_CONFIRM_REMOVE_SELECTED_SUBSCRIBERS, securityTokenAction = ACTION_REMOVE_SELECTED_SUBSCRIBERS )
     public String getConfirmRemoveSelectedSubscribers( HttpServletRequest request )
     {
-        String [ ] strIdSubscribers = (String [ ]) request.getParameterMap( ).get( PARAMETER_SUBSCRIBERS_SELECTION );
-        _multiSelectionValues = strIdSubscribers;
+        NewsLetter newsletter = findNewsletter( request );
 
-        UrlItem urlItem = new UrlItem( JSP_URL_DO_REMOVE_SELECTION );
-        int nNewsletterId = Integer.parseInt( request.getParameter( PARAMETER_NEWSLETTER_ID ) );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS ) )
+        {
+            return redirectAccessDenied( request );
+        }
 
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_SELECTION, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
+        _multiSelectionValues = request.getParameterValues( PARAMETER_SUBSCRIBERS_SELECTION );
+
+        UrlItem urlItem = new UrlItem( getActionUrl( ACTION_REMOVE_SELECTED_SUBSCRIBERS ) );
+        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+
+        return redirect( request,
+                AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_SELECTION, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION ) );
     }
 
     /**
      * Processes the unregistration of a subscriber for a newsletter
-     * 
+     *
      * @param request
      *            The Http request
-     * @return the jsp URL to display the form to manage newsletters
+     * @return the redirection to the subscribers of the newsletter
      */
+    @Action( ACTION_REMOVE_SUBSCRIBER )
     public String doUnregistrationAdmin( HttpServletRequest request )
     {
-        /* parameters */
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        int nSubscriberId = Integer.parseInt( request.getParameter( PARAMETER_SUBSCRIBER_ID ) );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
+        String strSubscriberId = request.getParameter( PARAMETER_SUBSCRIBER_ID );
 
-        // RBAC permission
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId,
-                NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS ) || !StringUtils.isNumeric( strSubscriberId ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        Subscriber subscriber = SubscriberHome.findByPrimaryKey( nSubscriberId, getPlugin( ) );
+        Subscriber subscriber = SubscriberHome.findByPrimaryKey( Integer.parseInt( strSubscriberId ), getPlugin( ) );
 
         if ( subscriber != null )
         {
-            getNewsletterService().removeSubscriberFromNewsletter( subscriber, nNewsletterId, getPlugin( ) );
+            _newsletterService.removeSubscriberFromNewsletter( subscriber, newsletter.getId( ), getPlugin( ) );
         }
 
-        UrlItem urlItem = new UrlItem( JSP_URL_MANAGE_SUBSCRIBERS );
-        urlItem.addParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_ID, nNewsletterId );
-
-        return urlItem.getUrl( );
+        return redirect( request, VIEW_MANAGE_SUBSCRIBERS, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
     }
 
     /**
      * Processes the unregistration of selected subscribers
-     * 
+     *
      * @param request
      *            The Http request
-     * @return the jsp URL to display the form to manage newsletters
+     * @return the redirection to the subscribers of the newsletter
      */
+    @Action( ACTION_REMOVE_SELECTED_SUBSCRIBERS )
     public String doRemoveSelection( HttpServletRequest request )
     {
-        /* parameters */
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // RBAC permission
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId,
-                NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        if ( ( _multiSelectionValues != null ) && ( _multiSelectionValues.length > 0 ) )
+        if ( ArrayUtils.isNotEmpty( _multiSelectionValues ) )
         {
             for ( String strId : _multiSelectionValues )
             {
-                Subscriber subscriber = SubscriberHome.findByPrimaryKey( Integer.parseInt( strId ), getPlugin( ) );
+                Subscriber subscriber = StringUtils.isNumeric( strId ) ? SubscriberHome.findByPrimaryKey( Integer.parseInt( strId ), getPlugin( ) ) : null;
 
                 if ( subscriber != null )
                 {
-                    getNewsletterService().removeSubscriberFromNewsletter( subscriber, nNewsletterId, getPlugin( ) );
+                    _newsletterService.removeSubscriberFromNewsletter( subscriber, newsletter.getId( ), getPlugin( ) );
                 }
             }
         }
+        _multiSelectionValues = null;
 
-        UrlItem urlItem = new UrlItem( JSP_URL_MANAGE_SUBSCRIBERS );
-        urlItem.addParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_ID, nNewsletterId );
-
-        return urlItem.getUrl( );
+        return redirect( request, VIEW_MANAGE_SUBSCRIBERS, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
     }
 
     /**
-     * Manages the removal form of a newsletter whose identifier is in the http request
-     * 
+     * Asks the confirmation of the removal of a newsletter
+     *
      * @param request
      *            The Http request
-     * @return the html code to confirm
+     * @return the url of the confirmation message
      */
+    @View( value = VIEW_CONFIRM_REMOVE_NEWSLETTER, securityTokenAction = ACTION_REMOVE_NEWSLETTER )
     public String getRemoveNewsLetter( HttpServletRequest request )
     {
-        /* parameters */
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // RBAC permission
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_DELETE, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_DELETE ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        if ( NewsLetterHome.checkLinkedPortlets( nNewsletterId ) )
+        if ( NewsLetterHome.checkLinkedPortlets( newsletter.getId( ) ) )
         {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_LINKED_TO_NEWSLETTER, AdminMessage.TYPE_STOP );
+            return redirectMessage( request, MESSAGE_LINKED_TO_NEWSLETTER );
         }
 
-        UrlItem urlItem = new UrlItem( JSP_URL_DO_REMOVE_NEWSLETTER );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
+        UrlItem urlItem = new UrlItem( getActionUrl( ACTION_REMOVE_NEWSLETTER ) );
+        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
 
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_NEWSLETTER, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
+        return redirect( request,
+                AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_NEWSLETTER, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION ) );
     }
 
     /**
-     * Manages the removal form of a newsletter archive whose identifier is in the http request
-     * 
+     * Processes the removal of a newsletter, with its subscriptions and its topics
+     *
      * @param request
      *            The Http request
-     * @return the html code to confirm
+     * @return the redirection to the newsletters list
      */
-    public String getRemoveSendingNewsLetter( HttpServletRequest request )
-    {
-        /* parameters */
-        String strSendingNewsletterId = request.getParameter( PARAMETER_SENDING_NEWSLETTER_ID );
-        int nSendingNewsletterId = Integer.parseInt( strSendingNewsletterId );
-
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-
-        // RBAC permission
-        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, Integer.toString( nNewsletterId ), NewsletterResourceIdService.PERMISSION_ARCHIVE,
-                (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        UrlItem urlItem = new UrlItem( JSP_URL_DO_REMOVE_SENDING_NEWSLETTER );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-        urlItem.addParameter( PARAMETER_SENDING_NEWSLETTER_ID, nSendingNewsletterId );
-
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_SENDING_NEWSLETTER, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
-    }
-
-    /**
-     * Manages the removal form of a newsletter archive whose identifier is in the http request
-     * 
-     * @param request
-     *            The Http request
-     * @return the html code to confirm
-     */
-    public String getRemoveMultiNewsLetter( HttpServletRequest request )
-    {
-        /* parameters */
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-
-        String [ ] strSendingNewsletterId = request.getParameterValues( PARAMETER_NEWSLETTER_SELECTION );
-
-        // RBAC permission
-        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, Integer.toString( nNewsletterId ), NewsletterResourceIdService.PERMISSION_ARCHIVE,
-                (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-        else
-            if ( ArrayUtils.isEmpty( strSendingNewsletterId ) )
-            {
-                return AdminMessageService.getMessageUrl( request, PROPERTY_SELECT_MANDATORY, AdminMessage.TYPE_ERROR );
-            }
-
-        StringBuilder sb = new StringBuilder( );
-        int count = 1;
-
-        for ( String s : strSendingNewsletterId )
-        {
-            sb.append( s );
-
-            if ( count != strSendingNewsletterId.length )
-            {
-                count++;
-                sb.append( "_" );
-            }
-        }
-
-        UrlItem urlItem = new UrlItem( JSP_URL_DO_REMOVE_MULTI_NEWSLETTER );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-        urlItem.addParameter( PARAMETER_SENDING_NEWSLETTER_ID, sb.toString( ) );
-
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_MULTI_SENDING_NEWSLETTER, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
-    }
-
-    /**
-     * Processes the removal form of a newsletter
-     * 
-     * @param request
-     *            The Http request
-     * @return the jsp URL to display the form to manage newsletters
-     */
+    @Action( ACTION_REMOVE_NEWSLETTER )
     public String doRemoveNewsLetter( HttpServletRequest request )
     {
-        int nNewsletterId = Integer.parseInt( request.getParameter( PARAMETER_NEWSLETTER_ID ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE,
-                Integer.toString( newsletter.getId( ) ), NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_DELETE ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        /* Looks for the list of the subscribers */
+        if ( NewsLetterHome.checkLinkedPortlets( newsletter.getId( ) ) )
+        {
+            return redirectMessage( request, MESSAGE_LINKED_TO_NEWSLETTER );
+        }
+
+        int nNewsletterId = newsletter.getId( );
         Collection<Subscriber> list = SubscriberHome.findSubscribers( nNewsletterId, NewsLetterConstants.CONSTANT_EMPTY_STRING,
-                Integer.parseInt( AppPropertiesService.getProperty( PROPERTY_LIMIT_MIN_SUSCRIBER ) ),
-                Integer.parseInt( AppPropertiesService.getProperty( PROPERTY_LIMIT_MAX_SUSCRIBER ) ), getPlugin( ) );
+                _nLimitMinSubscriber, _nLimitMaxSubscriber, getPlugin( ) );
 
         for ( Subscriber subscriber : list )
         {
-            NewsLetterHome.removeSubscriber( newsletter.getId( ), subscriber.getId( ), getPlugin( ) );
+            NewsLetterHome.removeSubscriber( nNewsletterId, subscriber.getId( ), getPlugin( ) );
         }
 
         // removes the archived sendings: the next newsletter may reuse the identifier
@@ -1359,400 +1235,307 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
             SendingNewsLetterHome.remove( sending.getId( ), getPlugin( ) );
         }
 
-        // removes the newsletter
         NewsletterTopicHome.removeAllByIdNewsletter( nNewsletterId, getPlugin( ) );
         NewsLetterHome.remove( nNewsletterId, getPlugin( ) );
 
-        return getHomeUrl( request );
+        return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
     }
 
     /**
-     * Processes the removal form of a sending newsletter
-     * 
+     * Asks the confirmation of the removal of a newsletter archive
+     *
      * @param request
      *            The Http request
-     * @return the jsp URL to display the form to manage newsletters
+     * @return the url of the confirmation message
      */
-    public String doRemoveSendingNewsLetter( HttpServletRequest request )
+    @View( value = VIEW_CONFIRM_REMOVE_SENDING, securityTokenAction = ACTION_REMOVE_SENDING )
+    public String getRemoveSendingNewsLetter( HttpServletRequest request )
     {
-        int nNewsletterId = Integer.parseInt( request.getParameter( PARAMETER_NEWSLETTER_ID ) );
-        int nSendingNewsletterId = Integer.parseInt( request.getParameter( PARAMETER_SENDING_NEWSLETTER_ID ) );
-
-        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, Integer.toString( nNewsletterId ), NewsletterResourceIdService.PERMISSION_ARCHIVE,
-                (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        SendingNewsLetterHome.remove( nSendingNewsletterId, getPlugin( ) );
-
-        UrlItem url = new UrlItem( JSP_URL_MANAGE_ARCHIVE );
-        url.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-
-        return url.getUrl( );
-    }
-
-    /**
-     * Processes the removal form of a sending newsletter
-     * 
-     * @param request
-     *            The Http request
-     * @return the jsp URL to display the form to manage newsletters
-     */
-    public String doRemoveMultiNewsLetter( HttpServletRequest request )
-    {
-        int nNewsletterId = Integer.parseInt( request.getParameter( PARAMETER_NEWSLETTER_ID ) );
+        NewsLetter newsletter = findNewsletter( request );
         String strSendingNewsletterId = request.getParameter( PARAMETER_SENDING_NEWSLETTER_ID );
 
-        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, Integer.toString( nNewsletterId ), NewsletterResourceIdService.PERMISSION_ARCHIVE,
-                (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ARCHIVE ) || !StringUtils.isNumeric( strSendingNewsletterId ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        String [ ] ids = strSendingNewsletterId.split( "_" );
+        UrlItem urlItem = new UrlItem( getActionUrl( ACTION_REMOVE_SENDING ) );
+        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+        urlItem.addParameter( PARAMETER_SENDING_NEWSLETTER_ID, strSendingNewsletterId );
 
-        for ( String id : ids )
+        return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_SENDING_NEWSLETTER, urlItem.getUrl( ),
+                AdminMessage.TYPE_CONFIRMATION ) );
+    }
+
+    /**
+     * Asks the confirmation of the removal of the newsletter archives selected in the list
+     *
+     * @param request
+     *            The Http request
+     * @return the url of the confirmation message
+     */
+    @View( value = VIEW_CONFIRM_REMOVE_MULTI_SENDING, securityTokenAction = ACTION_REMOVE_MULTI_SENDING )
+    public String getRemoveMultiNewsLetter( HttpServletRequest request )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+        String [ ] strSendingNewsletterId = request.getParameterValues( PARAMETER_NEWSLETTER_SELECTION );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ARCHIVE ) )
         {
-            SendingNewsLetterHome.remove( Integer.parseInt( id ), getPlugin( ) );
+            return redirectAccessDenied( request );
         }
 
-        UrlItem url = new UrlItem( JSP_URL_MANAGE_ARCHIVE );
-        url.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
+        if ( ArrayUtils.isEmpty( strSendingNewsletterId ) )
+        {
+            return redirect( request, AdminMessageService.getMessageUrl( request, PROPERTY_SELECT_MANDATORY, AdminMessage.TYPE_ERROR ) );
+        }
 
-        return url.getUrl( );
+        UrlItem urlItem = new UrlItem( getActionUrl( ACTION_REMOVE_MULTI_SENDING ) );
+        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+        urlItem.addParameter( PARAMETER_SENDING_NEWSLETTER_ID, String.join( SEPARATOR_SENDING_IDS, strSendingNewsletterId ) );
+
+        return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_MULTI_SENDING_NEWSLETTER, urlItem.getUrl( ),
+                AdminMessage.TYPE_CONFIRMATION ) );
+    }
+
+    /**
+     * Processes the removal of a newsletter archive
+     *
+     * @param request
+     *            The Http request
+     * @return the redirection to the archive of the newsletter
+     */
+    @Action( ACTION_REMOVE_SENDING )
+    public String doRemoveSendingNewsLetter( HttpServletRequest request )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+        String strSendingNewsletterId = request.getParameter( PARAMETER_SENDING_NEWSLETTER_ID );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ARCHIVE ) || !StringUtils.isNumeric( strSendingNewsletterId ) )
+        {
+            return redirectAccessDenied( request );
+        }
+
+        removeSending( newsletter, Integer.parseInt( strSendingNewsletterId ) );
+
+        return redirect( request, VIEW_MANAGE_ARCHIVE, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+    }
+
+    /**
+     * Processes the removal of the selected newsletter archives
+     *
+     * @param request
+     *            The Http request
+     * @return the redirection to the archive of the newsletter
+     */
+    @Action( ACTION_REMOVE_MULTI_SENDING )
+    public String doRemoveMultiNewsLetter( HttpServletRequest request )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ARCHIVE ) )
+        {
+            return redirectAccessDenied( request );
+        }
+
+        for ( String strId : StringUtils.defaultString( request.getParameter( PARAMETER_SENDING_NEWSLETTER_ID ) ).split( SEPARATOR_SENDING_IDS ) )
+        {
+            if ( StringUtils.isNumeric( strId ) )
+            {
+                removeSending( newsletter, Integer.parseInt( strId ) );
+            }
+        }
+
+        return redirect( request, VIEW_MANAGE_ARCHIVE, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
     }
 
     /**
      * Builds the newsletter's subscribers management page
-     * 
+     *
      * @param request
      *            The HTTP request
+     * @param model
+     *            the model of the page
      * @return the html code for newsletter's subscribers management page
      */
-    public String getManageSubscribers( HttpServletRequest request )
+    @View( value = VIEW_MANAGE_SUBSCRIBERS, securityTokenAction = ACTION_ADD_SUBSCRIBER )
+    public String getManageSubscribers( HttpServletRequest request, Models model )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsLetterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsLetterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS ) )
+        {
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
+        }
+
+        int nNewsLetterId = newsletter.getId( );
+        String strNewsletterId = Integer.toString( nNewsLetterId );
         NewsLetterProperties properties = NewsletterPropertiesHome.find( getPlugin( ) );
+        String strSearchString = StringUtils.defaultIfBlank( request.getParameter( NewsLetterConstants.PARAMETER_SUBSCRIBER_SEARCH ), StringUtils.EMPTY );
 
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId,
-                NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS, (User) getUser( ) ) )
-        {
-            return getManageNewsLetters( request );
-        }
-
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_MANAGE_SUBSCRIBERS );
-
-        String strSearchString = request.getParameter( NewsLetterConstants.PARAMETER_SUBSCRIBER_SEARCH );
-
-        if ( StringUtils.isBlank( strSearchString ) )
-        {
-            strSearchString = StringUtils.EMPTY;
-        }
-
-        _strCurrentPageIndex = Paginator.getPageIndex( request, Paginator.PARAMETER_PAGE_INDEX, _strCurrentPageIndex );
-        _nDefaultItemsPerPage = AppPropertiesService.getPropertyInt( PROPERTY_USERS_PER_PAGE, 10 );
-        _nItemsPerPage = Paginator.getItemsPerPage( request, Paginator.PARAMETER_ITEMS_PER_PAGE, _nItemsPerPage, _nDefaultItemsPerPage );
-
-        // get a list of subscribers
-        List<Subscriber> refListSubscribers = (List<Subscriber>) SubscriberHome.findSubscribers( nNewsLetterId, strSearchString,
-                Integer.parseInt( AppPropertiesService.getProperty( PROPERTY_LIMIT_MIN_SUSCRIBER ) ),
-                Integer.parseInt( AppPropertiesService.getProperty( PROPERTY_LIMIT_MAX_SUSCRIBER ) ), getPlugin( ) );
-        UrlItem url = new UrlItem( request.getRequestURI( ) );
+        List<Subscriber> refListSubscribers = new ArrayList<>( SubscriberHome.findSubscribers( nNewsLetterId, strSearchString,
+                _nLimitMinSubscriber, _nLimitMaxSubscriber, getPlugin( ) ) );
+        UrlItem url = new UrlItem( getViewFullUrl( VIEW_MANAGE_SUBSCRIBERS ) );
         url.addParameter( PARAMETER_NEWSLETTER_ID, nNewsLetterId );
-        url.addParameter( NewsLetterConstants.PARAMETER_SUBSCRIBER_SEARCH, strSearchString );
+        url.addParameter( NewsLetterConstants.PARAMETER_SUBSCRIBER_SEARCH, URLEncoder.encode( strSearchString, StandardCharsets.UTF_8 ) );
 
         String strSortedAttributeName = request.getParameter( Parameters.SORTED_ATTRIBUTE_NAME );
-        String strAscSort = null;
 
         if ( StringUtils.isNotBlank( strSortedAttributeName ) )
         {
-            strAscSort = request.getParameter( Parameters.SORTED_ASC );
+            String strAscSort = request.getParameter( Parameters.SORTED_ASC );
             url.addParameter( Parameters.SORTED_ATTRIBUTE_NAME, strSortedAttributeName );
             url.addParameter( Parameters.SORTED_ASC, strAscSort );
-
-            boolean bIsAscSort = Boolean.parseBoolean( strAscSort );
-
-            Collections.sort( refListSubscribers, new AttributeComparator( strSortedAttributeName, bIsAscSort ) );
+            Collections.sort( refListSubscribers, new AttributeComparator( strSortedAttributeName, Boolean.parseBoolean( strAscSort ) ) );
         }
 
-        IPaginator<Subscriber> paginator = new LocalizedPaginator<Subscriber>( refListSubscribers, _nItemsPerPage, url.getUrl( ),
-                Paginator.PARAMETER_PAGE_INDEX, _strCurrentPageIndex, getLocale( ) );
+        _subscriberPager.withBaseUrl( url.getUrl( ) ).withListItem( refListSubscribers ).populateModels( request, model, getLocale( ) );
 
-        Map<String, Object> model = new HashMap<String, Object>( );
         model.put( MARK_NEWSLETTER, newsletter );
-        model.put( MARK_NB_ITEMS_PER_PAGE, Integer.toString( _nItemsPerPage ) );
         model.put( MARK_SEARCH_STRING, strSearchString );
-        model.put( MARK_PAGINATOR, paginator );
-        model.put( MARK_SUBSCRIBERS_LIST, paginator.getPageItems( ) );
         model.put( MARK_DISPLAY_STATUS, properties.isValidationActive( ) );
         model.put( MARK_ADD_SUBSCRIBER_RIGHT,
                 RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_ADD_SUBSCRIBER, (User) getUser( ) ) );
         model.put( MARK_IMPORT_SUBSCRIBER_RIGHT,
                 RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_IMPORT_SUBSCRIBERS, (User) getUser( ) ) );
-        model.put( MARK_EXPORT_SUBSCRIBER_RIGTH,
-                RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_EXPORT_SUBSCRIBERS, (User) getUser( ) ) );
+        model.put( MARK_EXPORT_SUBSCRIBER_RIGTH, RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_EXPORT_SUBSCRIBERS, (User) getUser( ) ) );
+        model.put( MARK_SUBSCRIBER_MANAGEMENT_RIGHT, getUser( ).checkRight( SubscriberJspBean.RIGHT_NEWSLETTER_SUBSCRIBER_MANAGEMENT ) && RBACService
+                .isAuthorized( Subscriber.RESOURCE_TYPE, RBAC.WILDCARD_RESOURCES_ID, SubscriberResourceIdService.PERMISSION_VIEW, (User) getUser( ) ) );
+        fillNewsletterTabsModel( model, newsletter );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_MANAGE_SUBSCRIBERS, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
+        return getPage( PROPERTY_PAGE_TITLE_MANAGE_SUBSCRIBERS, TEMPLATE_MANAGE_SUBSCRIBERS );
     }
 
     /**
      * Processes the registration of a subscriber
-     * 
+     *
      * @param request
      *            The Http request
-     * @return The jsp URL which displays the subscribers management page
+     * @return The redirection to the subscribers of the newsletter, or the url of the error message
      */
+    @Action( ACTION_ADD_SUBSCRIBER )
     public String doAddSubscriber( HttpServletRequest request )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsLetterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsLetterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_ADD_SUBSCRIBER, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ADD_SUBSCRIBER ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        String strEmail = request.getParameter( NewsLetterConstants.PARAMETER_EMAIL );
+        String strEmail = StringUtils.trimToEmpty( request.getParameter( NewsLetterConstants.PARAMETER_EMAIL ) );
 
-        // Mandatory fields
-        if ( ( strEmail == null ) || strEmail.equals( NewsLetterConstants.CONSTANT_EMPTY_STRING ) || !StringUtil.checkEmail( strEmail.trim( ) ) )
+        if ( strEmail.isEmpty( ) || !StringUtil.checkEmail( strEmail ) )
         {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_FIELD_EMAIL_VALID, AdminMessage.TYPE_STOP );
+            return redirectMessage( request, MESSAGE_FIELD_EMAIL_VALID );
         }
 
-        // Checks if a subscriber with the same email address doesn't exist yet
         Subscriber subscriber = SubscriberHome.findByEmail( strEmail, getPlugin( ) );
 
         if ( subscriber == null )
         {
-            // The email doesn't exist, so create a new subcriber
             subscriber = new Subscriber( );
-            subscriber.setEmail( strEmail.trim( ) );
+            subscriber.setEmail( strEmail );
             SubscriberHome.create( subscriber, getPlugin( ) );
         }
 
-        // adds a subscriber to the current newsletter
-        if ( NewsLetterHome.findRegistration( nNewsLetterId, subscriber.getId( ), getPlugin( ) ) )
+        if ( NewsLetterHome.findRegistration( newsletter.getId( ), subscriber.getId( ), getPlugin( ) ) )
         {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_EMAIL_EXISTS, AdminMessage.TYPE_STOP );
+            return redirectMessage( request, MESSAGE_EMAIL_EXISTS );
         }
 
-        // the current date
-        Timestamp tToday = new java.sql.Timestamp( new java.util.Date( ).getTime( ) );
-        NewsLetterHome.addSubscriber( newsletter.getId( ), subscriber.getId( ), tToday, getPlugin( ) );
+        NewsLetterHome.addSubscriber( newsletter.getId( ), subscriber.getId( ), new Timestamp( System.currentTimeMillis( ) ), getPlugin( ) );
 
-        // Returns the jsp URL to display the subscribers management page with
-        // the new one
-        UrlItem urlItem = new UrlItem( JSP_URL_MANAGE_SUBSCRIBERS );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsLetterId );
-
-        return urlItem.getUrl( );
+        return redirect( request, VIEW_MANAGE_SUBSCRIBERS, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
     }
 
     /**
-     * Builds the page of preparation before sending
-     * 
+     * Builds the page of preparation before sending, with the preview of the email as the subscribers will receive it. A newsletter without
+     * content cannot be sent.
+     *
      * @param request
      *            the http request
+     * @param model
+     *            the model of the page
      * @return the html code for the preparation page
      */
-    public String getPrepareNewsLetter( HttpServletRequest request )
+    @View( VIEW_PREPARE_NEWSLETTER )
+    public String getPrepareNewsLetter( HttpServletRequest request, Models model )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_SEND, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_SEND ) )
         {
-            return getManageNewsLetters( request );
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
         }
 
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_PREPARE );
+        if ( StringUtils.isEmpty( newsletter.getHtml( ) ) )
+        {
+            return redirectMessage( request, MESSAGE_SENDING_EMPTY_NOT_ALLOWED );
+        }
 
         String strBaseUrl = AppPathService.getBaseUrl( request );
-        Map<String, Object> model = new HashMap<String, Object>( );
-        String strObject = request.getParameter( PARAMETER_NEWSLETTER_OBJECT );
+        String strPreviewBaseUrl = strBaseUrl.endsWith( NewsLetterConstants.CONSTANT_SLASH ) ? strBaseUrl : strBaseUrl + NewsLetterConstants.CONSTANT_SLASH;
 
-        if ( strObject != null )
-        {
-            model.put( MARK_NEWSLETTER_OBJECT, strObject );
-        }
-        else
-        {
-            model.put( MARK_NEWSLETTER_OBJECT, StringUtils.EMPTY );
-        }
-
+        model.put( MARK_NEWSLETTER_OBJECT, StringUtils.defaultString( request.getParameter( PARAMETER_NEWSLETTER_OBJECT ) ) );
         model.put( MARK_PREVIEW, newsletter.getHtml( ) );
+        model.put( MARK_PREVIEW_HTML, setHtmlTemplateEmail( newsletter, strPreviewBaseUrl, newsletter.getUnsubscribe( ) ).getHtml( ) );
         model.put( MARK_UNSUBSCRIBE, newsletter.getUnsubscribe( ) );
         model.put( MARK_NEWSLETTER, newsletter );
+        model.put( MARK_NEWSLETTER_COUNT_ACTIVE_SUBSCRIBERS, NewsLetterHome.findNbrActiveSubscribers( newsletter.getId( ), getPlugin( ) ) );
+        NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( newsletter.getNewsLetterTemplateId( ), getPlugin( ) );
+        model.put( MARK_NEWSLETTER_TEMPLATE_DESCRIPTION, ( newsletterTemplate != null ) ? newsletterTemplate.getDescription( ) : null );
         model.put( NewsLetterConstants.MARK_BASE_URL, strBaseUrl );
         model.put( NewsLetterConstants.MARK_SUBSCRIBER_EMAIL, NewsLetterConstants.MARK_SUBSCRIBER_EMAIL_EACH );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_PREPARE_NEWSLETTER, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
+        return getPage( PROPERTY_PAGE_TITLE_PREPARE, TEMPLATE_PREPARE_NEWSLETTER );
     }
 
     /**
-     * Builds the page of preparation before sending
-     * 
-     * @param request
-     *            the Http request
-     * @return the html code for the preparation page
-     */
-    public String doPrepareNewsLetter( HttpServletRequest request )
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_SEND, (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        // allow to send only if the newsletter is not empty
-        if ( StringUtils.isEmpty( newsletter.getHtml( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_SENDING_EMPTY_NOT_ALLOWED, AdminMessage.TYPE_STOP );
-        }
-
-        UrlItem urlItem = new UrlItem( JSP_URL_PREPARE_NEWSLETTER );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-
-        return urlItem.getUrl( );
-    }
-
-    /**
-     * Builds the page of preparation before sending
-     * 
+     * Builds the confirmation page before sending the newsletter. The newsletter must have a content, a subject and at least one subscriber to
+     * send it to. The page warns when the content did not change since the last sending.
+     *
      * @param request
      *            the http request
-     * @return the html code for the preparation page
-     */
-    public String getPreviewNewsLetter( HttpServletRequest request )
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_SEND, (User) getUser( ) ) )
-        {
-            return getManageNewsLetters( request );
-        }
-
-        String strBaseUrl = AppPathService.getBaseUrl( request );
-
-        if ( !strBaseUrl.endsWith( NewsLetterConstants.CONSTANT_SLASH ) )
-        {
-            strBaseUrl += NewsLetterConstants.CONSTANT_SLASH;
-        }
-
-        HtmlTemplate templateNewsLetter = setHtmlTemplateEmail( newsletter, strBaseUrl, newsletter.getUnsubscribe( ) );
-
-        return templateNewsLetter.getHtml( );
-    }
-
-    /**
-     * Displays the confirmation page before sending the newsletter
-     * 
-     * @param request
-     *            the http request
+     * @param model
+     *            the model of the page
      * @return the html code for the confirmation page
      */
-    public String doConfirmSendNewsLetter( HttpServletRequest request )
+    @View( value = VIEW_CONFIRM_SEND_NEWSLETTER, securityTokenAction = ACTION_SEND_NEWSLETTER )
+    public String getConfirmSendNewsLetter( HttpServletRequest request, Models model )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_SEND, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_SEND ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
+        int nNewsletterId = newsletter.getId( );
+        String strObject = request.getParameter( PARAMETER_NEWSLETTER_OBJECT );
+        int nNbrSubscribers = NewsLetterHome.findNbrActiveSubscribers( nNewsletterId, getPlugin( ) );
         String strErrorMessage = null;
 
-        // allow to send only if the newsletter is not empty
         if ( StringUtils.isEmpty( newsletter.getHtml( ) ) )
         {
             strErrorMessage = MESSAGE_SENDING_EMPTY_NOT_ALLOWED;
         }
-
-        // allow to send only if at least one active subscriber
-        int nNbrSubscribers = NewsLetterHome.findNbrActiveSubscribers( nNewsletterId, getPlugin( ) );
-
-        if ( strErrorMessage == null && nNbrSubscribers == 0 )
-        {
-            strErrorMessage = MESSAGE_NO_SUBSCRIBER;
-        }
-
-        String strObject = request.getParameter( PARAMETER_NEWSLETTER_OBJECT );
-
-        // Block access if no object for the newsletter specified
-        if ( strErrorMessage == null && StringUtils.isEmpty( strObject ) )
-        {
-            strErrorMessage = MESSAGE_OBJECT_NOT_SPECIFIED;
-        }
+        else
+            if ( nNbrSubscribers == 0 )
+            {
+                strErrorMessage = MESSAGE_NO_SUBSCRIBER;
+            }
+            else
+                if ( StringUtils.isEmpty( strObject ) )
+                {
+                    strErrorMessage = MESSAGE_OBJECT_NOT_SPECIFIED;
+                }
 
         if ( strErrorMessage != null )
         {
-            return AdminMessageService.getMessageUrl( request, strErrorMessage, AdminMessage.TYPE_STOP );
+            return redirectMessage( request, strErrorMessage );
         }
 
-        UrlItem urlItem = new UrlItem( JSP_URL_CONFIRM_SEND_NEWSLETTER );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_OBJECT, URLEncoder.encode( strObject, StandardCharsets.UTF_8 ) );
-
-        return urlItem.getUrl( );
-    }
-
-    /**
-     * Builds the confirmation page before sending the newsletter
-     *
-     * @param request
-     *            the http request
-     * @return the html code for the confirmation page
-     * @throws AccessDeniedException
-     *             if the newsletter is not found or the user is not allowed to send it
-     */
-    public String getConfirmSendNewsLetter( HttpServletRequest request ) throws AccessDeniedException
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        NewsLetter newsletter = null;
-
-        if ( StringUtils.isNumeric( strNewsletterId ) )
-        {
-            newsletter = NewsLetterHome.findByPrimaryKey( Integer.parseInt( strNewsletterId ), getPlugin( ) );
-        }
-
-        if ( newsletter == null || !AdminWorkgroupService.isAuthorized( newsletter, getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_SEND, getUser( ) ) )
-        {
-            throw new AccessDeniedException( Messages.USER_ACCESS_DENIED );
-        }
-
-        int nNewsletterId = newsletter.getId( );
-
-        // warn if the newletter html content is the same as the one of the last
-        // sending for that newsletter
         SendingNewsLetter lastSending = SendingNewsLetterHome.findLastSendingForNewsletterId( nNewsletterId, getPlugin( ) );
 
         String strMessage = MESSAGE_CONFIRM_SEND_NEWSLETTER;
@@ -1766,766 +1549,526 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
         Map<String, Object> message = new HashMap<>( );
         message.put( MARK_MESSAGE_TYPE, AdminMessage.TYPE_CONFIRMATION );
 
-        Map<String, Object> model = new HashMap<>( );
         model.put( MARK_MESSAGE, message );
         model.put( MARK_TEXT, I18nService.getLocalizedString( strMessage, getLocale( ) ) );
         model.put( MARK_NEWSLETTER, newsletter );
-        model.put( MARK_NEWSLETTER_OBJECT, StringUtils.defaultString( request.getParameter( PARAMETER_NEWSLETTER_OBJECT ) ) );
-        model.put( SecurityTokenService.MARK_TOKEN, getSecurityTokenService( ).getToken( request, ACTION_SEND_NEWSLETTER ) );
+        model.put( MARK_NEWSLETTER_OBJECT, strObject );
+        model.put( MARK_NEWSLETTER_COUNT_ACTIVE_SUBSCRIBERS, nNbrSubscribers );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_CONFIRM_SEND_NEWSLETTER, getLocale( ), model );
-
-        return template.getHtml( );
+        return getPage( PROPERTY_PAGE_TITLE_CONFIRM_SEND, TEMPLATE_CONFIRM_SEND_NEWSLETTER );
     }
 
     /**
-     * Displays the confirmation page before testing the newsletter
-     * 
+     * Asks the confirmation of the sending of the newsletter to its test recipients
+     *
      * @param request
      *            the http request
-     * @return the html code for the confirmation page
+     * @return the url of the confirmation message
      */
-    public String doConfirmTestNewsLetter( HttpServletRequest request )
+    @View( value = VIEW_CONFIRM_TEST_NEWSLETTER, securityTokenAction = ACTION_TEST_NEWSLETTER )
+    public String getConfirmTestNewsLetter( HttpServletRequest request )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        // allow to send only if the newsletter is not empty
         if ( StringUtils.isEmpty( newsletter.getHtml( ) ) )
         {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_SENDING_EMPTY_NOT_ALLOWED, AdminMessage.TYPE_STOP );
+            return redirectMessage( request, MESSAGE_SENDING_EMPTY_NOT_ALLOWED );
         }
 
-        String strObject = request.getParameter( PARAMETER_NEWSLETTER_OBJECT );
+        UrlItem urlItem = new UrlItem( getActionUrl( ACTION_TEST_NEWSLETTER ) );
+        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
 
-        UrlItem urlItem = new UrlItem( JSP_URL_TEST_NEWSLETTER );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_OBJECT, strObject );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_TEST_NEWSLETTER, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
+        return redirect( request,
+                AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_TEST_NEWSLETTER, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION ) );
     }
 
     /**
-     * Processes the testing of a newsletter
-     * 
+     * Processes the testing of a newsletter: it is sent to its test recipients
+     *
      * @param request
      *            the http request
-     * @return the url of the confirmation page
+     * @return the redirection to the composition of the newsletter, or the url of the error message
      */
+    @Action( ACTION_TEST_NEWSLETTER )
     public String doTestNewsLetter( HttpServletRequest request )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirectAccessDenied( request );
         }
 
-        // Allow to send test if the list of test recipients is not empty
-        String strTestRecipients = newsletter.getTestRecipients( );
-
-        String strWrongEmail = isWrongEmail( strTestRecipients );
+        String strWrongEmail = isWrongEmail( newsletter.getTestRecipients( ) );
         if ( StringUtils.isNotEmpty( strWrongEmail ) )
         {
             Object [ ] messageArgs = {
                     strWrongEmail
             };
 
-            return AdminMessageService.getMessageUrl( request, MESSAGE_WRONG_EMAIL, messageArgs, AdminMessage.TYPE_STOP );
+            return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_WRONG_EMAIL, messageArgs, AdminMessage.TYPE_STOP ) );
         }
-
-        SendingNewsLetter sending = new SendingNewsLetter( );
-        sending.setNewsLetterId( nNewsletterId );
-        sending.setDate( new Timestamp( new java.util.Date( ).getTime( ) ) ); // the current date
 
         String strObject = I18nService.getLocalizedString( PROPERTY_TEST_SUBJECT, getLocale( ) ) + newsletter.getName( ) + "]" + newsletter.getTestSubject( );
-
-        /* lutece.properties */
         String strBaseUrl = AppPathService.getProdUrl( request );
-
         HtmlTemplate templateNewsLetter = setHtmlTemplateEmail( newsletter, strBaseUrl, newsletter.getUnsubscribe( ) );
 
-        getNewsletterService().sendMail( newsletter, strObject, strBaseUrl, templateNewsLetter, convertToList( newsletter.getTestRecipients( ) ) );
+        _newsletterService.sendMail( newsletter, strObject, strBaseUrl, templateNewsLetter, convertToList( newsletter.getTestRecipients( ) ) );
 
-        return getHomeUrl( request );
+        return redirect( request, VIEW_COMPOSE_NEWSLETTER, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
     }
 
     /**
-     * Processes the sending of a newsletter
-     * 
+     * Processes the sending of a newsletter. The security token of the confirmation page is used once: a second submission of the same page is
+     * refused, so a newsletter is not sent twice.
+     *
      * @param request
      *            the http request
-     * @return the url of the confirmation page
+     * @return the redirection to the newsletters list, or the url of the error message
      */
+    @Action( ACTION_SEND_NEWSLETTER )
     public String doSendNewsLetter( HttpServletRequest request )
     {
-        if ( !getSecurityTokenService( ).validate( request, ACTION_SEND_NEWSLETTER ) )
+        NewsLetter newsletter = findNewsletter( request );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_SEND ) )
         {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_SENDING_ALREADY_DONE, getHomeUrl( request ), AdminMessage.TYPE_STOP );
+            return redirectAccessDenied( request );
         }
 
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        String strObject = request.getParameter( PARAMETER_NEWSLETTER_OBJECT );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_SEND, (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        // allow to send only if at list one subscriber
-        int nNbrSubscribers = NewsLetterHome.findNbrSubscribers( nNewsletterId, getPlugin( ) );
-
-        if ( nNbrSubscribers == 0 )
-        {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_NO_SUBSCRIBER, AdminMessage.TYPE_STOP );
-        }
-
-        if ( StringUtils.isEmpty( strObject ) )
-        {
-            strObject = newsletter.getName( );
-        }
-
-        /* lutece.properties */
-        String strBaseUrl = AppPathService.getProdUrl( request );
-
-        /* list of subscribers */
-        Collection<Subscriber> list = SubscriberHome.findSubscribersForSending( nNewsletterId,
-                Integer.parseInt( AppPropertiesService.getProperty( PROPERTY_LIMIT_MIN_SUSCRIBER ) ),
-                Integer.parseInt( AppPropertiesService.getProperty( PROPERTY_LIMIT_MAX_SUSCRIBER ) ), getPlugin( ) );
-
-        // Get the HtmlTemplate of email
-        HtmlTemplate templateNewsLetter = setHtmlTemplateEmail( newsletter, strBaseUrl, newsletter.getUnsubscribe( ) );
-
-        getNewsletterService().sendMail( newsletter, strObject, strBaseUrl, templateNewsLetter, list );
-
-        SendingNewsLetter sending = new SendingNewsLetter( );
-        sending.setNewsLetterId( nNewsletterId );
-        sending.setDate( new Timestamp( new java.util.Date( ).getTime( ) ) );
-        sending.setCountSubscribers( nNbrSubscribers );
-
-        if ( Boolean.parseBoolean( newsletter.getUnsubscribe( ) ) )
-        {
-            templateNewsLetter = setHtmlTemplateEmail( newsletter, strBaseUrl, newsletter.getUnsubscribe() );
-        }
-        sending.setHtml( templateNewsLetter.getHtml( ) );
-        sending.setEmailSubject( strObject );
-        SendingNewsLetterHome.create( sending, getPlugin( ) );
-
-        // updates the sending date
-        newsletter.setDateLastSending( sending.getDate( ) );
-        NewsLetterHome.update( newsletter, getPlugin( ) );
-
-        return getHomeUrl( request );
-    }
-
-    /**
-     * Processes the registration of a newsletter and loads the newsletter management page
-     * 
-     * @param request
-     *            The Http request
-     * @return The jsp URL which displays the newsletters management page
-     */
-    public String doRegisterNewsLetter( HttpServletRequest request )
-    {
-        String strAction = request.getParameter( PARAMETER_ACTION );
-        String strReturn = null;
-
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        if ( !CONSTANT_ACTION_CANCEL.equals(strAction) )
-        {
-            String strBaseUrl = AppPathService.getBaseUrl( request );
-
-            newsletter.setHtml( doClean( request.getParameter( PARAMETER_HTML_CONTENT ), strBaseUrl ) );
-
-            NewsLetterHome.update( newsletter, getPlugin( ) );
-
-            if ( CONSTANT_ACTION_REGISTER.equals( strAction ) )
-            {
-                UrlItem url = new UrlItem( JSP_URL_DO_COMPOSE_NEWSLETTER );
-                url.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-                strReturn = url.getUrl( );
-            }
-            else
-                if ( CONSTANT_ACTION_PREPARE_SENDING.equals(strAction) )
-                {
-                    UrlItem url = new UrlItem( JSP_URL_DO_PREPARE_NEWSLETTER );
-                    url.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-                    strReturn = url.getUrl( );
-                }
-                else
-                    if ( CONSTANT_ACTION_TEST_SENDING.equals(strAction) )
-                    {
-                        UrlItem url = new UrlItem( JSP_URL_CONFIRM_TEST_NEWSLETTER );
-                        url.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-                        strReturn = url.getUrl( );
-                    }
-        }
-        else
-        {
-            String strUrl = getHomeUrl( request );
-            strReturn = AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_CANCEL_COMPOSE, strUrl, AdminMessage.TYPE_CONFIRMATION );
-        }
-
-        return strReturn;
-    }
-
-    /**
-     * Builds the subscribers import page
-     * 
-     * @param request
-     *            The HTTP request
-     * @return the html code for subscribers import page
-     */
-    public String getImportSubscribers( HttpServletRequest request )
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId,
-                NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS, (User) getUser( ) ) )
-        {
-            return getManageNewsLetters( request );
-        }
-
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_IMPORT );
-
-        Map<String, Object> model = new HashMap<String, Object>( );
-        model.put( MARK_NEWSLETTER_ID, nNewsletterId );
-        model.put( MARK_NEWSLETTER_NAME, newsletter.getName( ) );
-        model.put( MARK_IMPORT_DELETE, false );
-
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_IMPORT_SUBSCRIBERS, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
-    }
-
-    /**
-     * Builds the subscribers import page
-     * 
-     * @param request
-     *            The HTTP request
-     * @return the html code for subscribers import page
-     */
-    public String getImportDeleteSubscribers( HttpServletRequest request )
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId,
-                NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS, (User) getUser( ) ) )
-        {
-            return getManageNewsLetters( request );
-        }
-
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_IMPORT_DELETE );
-
-        Map<String, Object> model = new HashMap<String, Object>( );
-        model.put( MARK_NEWSLETTER_ID, nNewsletterId );
-        model.put( MARK_NEWSLETTER_NAME, newsletter.getName( ) );
-        model.put( MARK_IMPORT_DELETE, true );
-
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_IMPORT_SUBSCRIBERS, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
-    }
-
-    /**
-     * Processes the import of subscribers due to a csv file and loads the subscribers management page
-     * 
-     * @param request
-     *            The Http request
-     * @return The jsp URL which displays the subscribers management page
-     */
-    public String doImportSubscribers( HttpServletRequest request )
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-        String strImportDelete = request.getParameter( MARK_IMPORT_DELETE );
-        Boolean bImportDelete = Boolean.valueOf( strImportDelete );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId,
-                NewsletterResourceIdService.PERMISSION_IMPORT_SUBSCRIBERS, (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        try
-        {
-            if ( request instanceof MultipartHttpServletRequest )
-            {
-                // create the multipart request
-                MultipartHttpServletRequest multi = (MultipartHttpServletRequest) request;
-
-                MultipartItem csvItem = multi.getFile( PARAMETER_SUBSCRIBERS_FILE );
-                String strMultiFileName = csvItem == null ? StringUtils.EMPTY : UploadUtil.cleanFileName( csvItem.getName( ) );
-                if ( csvItem == null || StringUtils.isEmpty( strMultiFileName ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, Messages.MANDATORY_FIELDS, AdminMessage.TYPE_STOP );
-                }
-
-                // test the extension of the file must be 'csv'
-                String strExtension = strMultiFileName.substring( strMultiFileName.length( ) - 4, strMultiFileName.length( ) );
-
-                if ( !strExtension.equals( CONSTANT_CSV_FILE_EXTENSION ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, MESSAGE_CSV_FILE_EXTENSION, AdminMessage.TYPE_STOP );
-                }
-
-                List<String [ ]> tabUsers;
-                char cDelimiter = AppPropertiesService.getProperty( PROPERTY_IMPORT_DELIMITER ).charAt( 0 );
-                try ( Reader fileReader = new InputStreamReader( csvItem.getInputStream( ) );
-                      CSVReader csvReader = new CSVReaderBuilder( fileReader )
-                              .withCSVParser( new CSVParserBuilder( ).withSeparator( cDelimiter ).build( ) )
-                              .build( ) )
-                {
-                    tabUsers = csvReader.readAll( );
-                }
-
-                // the file is empty
-                if ( ( tabUsers == null ) || ( tabUsers.size( ) == 0 ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, MESSAGE_CSV_FILE_EMPTY_OR_NOT_VALID_EMAILS, AdminMessage.TYPE_STOP );
-                }
-                int nColumnIndex = Integer.parseInt( AppPropertiesService.getProperty( CONSTANT_EMAIL_COLUMN_INDEX ) );
-                // the current date
-                Timestamp tToday = new java.sql.Timestamp( new java.util.Date( ).getTime( ) );
-
-                // Add the new users
-                for ( String [ ] strEmailTemp : tabUsers )
-                {
-                    if ( strEmailTemp.length < nColumnIndex )
-                    {
-                        return AdminMessageService.getMessageUrl( request, MESSAGE_COLUMN_INDEX_NOT_EXIST, AdminMessage.TYPE_ERROR );
-                    }
-
-                    String strEmail = strEmailTemp [nColumnIndex];
-
-                    // check if the email is not null and is valid
-                    if ( ( strEmail != null ) && StringUtil.checkEmail( strEmail.trim( ) ) )
-                    {
-                        // Checks if a subscriber with the same email address doesn't exist yet
-                        Subscriber subscriber = SubscriberHome.findByEmail( strEmail, getPlugin( ) );
-
-                        if ( !bImportDelete )
-                        {
-                            if ( subscriber == null )
-                            {
-                                // The email doesn't exist, so create a new subcriber
-                                subscriber = new Subscriber( );
-                                subscriber.setEmail( strEmail );
-                                SubscriberHome.create( subscriber, getPlugin( ) );
-                            }
-
-                            // adds a subscriber to the current newsletter
-                            NewsLetterHome.addSubscriber( nNewsletterId, subscriber.getId( ), tToday, getPlugin( ) );
-                        }
-                        else
-                        {
-                            if ( subscriber != null )
-                            {
-                                NewsLetterHome.removeSubscriber( nNewsletterId, subscriber.getId( ), getPlugin( ) );
-                            }
-                        }
-                    }
-                }
-            }
-            UrlItem urlItem = new UrlItem( JSP_URL_MANAGE_SUBSCRIBERS );
-            urlItem.addParameter( PARAMETER_NEWSLETTER_ID, nNewsletterId );
-
-            return urlItem.getUrl( );
-        }
-        catch( IOException | CsvException e )
-        {
-            throw new RuntimeException( e.getMessage( ) );
-        }
-    }
-
-    /**
-     * Exports the list of subscribers in a csv file format
-     * 
-     * @param request
-     *            The Http Request
-     * @param response
-     *            The Http Response
-     * @return The url of the management console for newsletters
-     */
-    public String doExportCsv( HttpServletRequest request, HttpServletResponse response )
-    {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        // allow to send only if at least one subscriber
+        int nNewsletterId = newsletter.getId( );
         int nNbrSubscribers = NewsLetterHome.findNbrActiveSubscribers( nNewsletterId, getPlugin( ) );
 
         if ( nNbrSubscribers == 0 )
         {
-            return AdminMessageService.getMessageUrl( request, MESSAGE_NO_SUBSCRIBER_EXPORT, AdminMessage.TYPE_STOP );
+            return redirectMessage( request, MESSAGE_NO_SUBSCRIBER );
         }
 
-        String strFileName = newsletter.getName( ) + CONSTANT_CSV_FILE_EXTENSION;
-        byte [ ] byteSubscribersList = getNewsletterService().getSubscribersCsvExport( nNewsletterId );
-        NewsletterUtils.addHeaderResponse( request, response, strFileName, CONSTANT_CSV_FILE_EXTENSION );
-        response.setContentLength( byteSubscribersList.length );
+        String strObject = StringUtils.defaultIfEmpty( request.getParameter( PARAMETER_NEWSLETTER_OBJECT ), newsletter.getName( ) );
+        String strBaseUrl = AppPathService.getProdUrl( request );
 
-        OutputStream os = null;
-        try
-        {
-            os = response.getOutputStream( );
-            os.write( byteSubscribersList );
-            os.close( );
-        }
-        catch( IOException e )
-        {
-            AppLogService.error( e );
-            IOUtils.closeQuietly( os );
-        }
+        Collection<Subscriber> list = SubscriberHome.findSubscribersForSending( nNewsletterId,
+                _nLimitMinSubscriber, _nLimitMaxSubscriber, getPlugin( ) );
 
-        return getHomeUrl( request );
+        HtmlTemplate templateNewsLetter = setHtmlTemplateEmail( newsletter, strBaseUrl, newsletter.getUnsubscribe( ) );
+
+        _newsletterService.sendMail( newsletter, strObject, strBaseUrl, templateNewsLetter, list );
+
+        SendingNewsLetter sending = new SendingNewsLetter( );
+        sending.setNewsLetterId( nNewsletterId );
+        sending.setDate( new Timestamp( System.currentTimeMillis( ) ) );
+        sending.setCountSubscribers( nNbrSubscribers );
+        sending.setHtml( templateNewsLetter.getHtml( ) );
+        sending.setEmailSubject( strObject );
+        SendingNewsLetterHome.create( sending, getPlugin( ) );
+
+        newsletter.setDateLastSending( sending.getDate( ) );
+        NewsLetterHome.update( newsletter, getPlugin( ) );
+
+        return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
     }
 
     /**
-     * Get the manage topics page
-     * 
+     * Processes the composition form: the content is saved, then the button pushed opens the composition again, the preparation of the sending
+     * or the confirmation of the test sending. The cancel button asks the confirmation of leaving the composition, without saving.
+     *
      * @param request
-     *            The request
-     * @return The HTML to display
+     *            The Http request
+     * @return The redirection to the next page
      */
-    @SuppressWarnings( "unchecked" )
-    public String getManageNewsletterTopics( HttpServletRequest request )
+    @Action( ACTION_REGISTER_NEWSLETTER )
+    public String doRegisterNewsLetter( HttpServletRequest request )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
+        NewsLetter newsletter = findNewsletter( request );
 
-        if ( !StringUtils.isNumeric( strNewsletterId ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
         {
-            return getManageNewsLetters( request );
+            return redirectAccessDenied( request );
         }
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
 
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        String strComposeAction = request.getParameter( PARAMETER_COMPOSE_ACTION );
+
+        if ( CONSTANT_ACTION_CANCEL.equals( strComposeAction ) )
         {
-            return getManageNewsLetters( request );
+            return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_CANCEL_COMPOSE, getViewFullUrl( VIEW_MANAGE_NEWSLETTERS ),
+                    AdminMessage.TYPE_CONFIRMATION ) );
         }
-        setPageTitleProperty( MESSAGE_PAGE_TITLE_MANAGE_TOPICS );
 
-        List<NewsletterTopic> listTopics = NewsletterTopicHome.findAllByIdNewsletter( nNewsletterId, getPlugin( ) );
+        newsletter.setHtml( doClean( request.getParameter( PARAMETER_HTML_CONTENT ), AppPathService.getBaseUrl( request ) ) );
+        NewsLetterHome.update( newsletter, getPlugin( ) );
 
-        // We check if we must update the template
-        if ( Boolean.parseBoolean( request.getParameter( PARAMETER_UPDATE_TEMPLATE ) ) )
+        if ( CONSTANT_ACTION_PREPARE_SENDING.equals( strComposeAction ) )
         {
-            String strTemplateId = request.getParameter( MARK_NEWSLETTER_TEMPLATE_ID );
-            if ( StringUtils.isNumeric( strTemplateId ) )
+            return redirect( request, VIEW_PREPARE_NEWSLETTER, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+        }
+
+        if ( CONSTANT_ACTION_TEST_SENDING.equals( strComposeAction ) )
+        {
+            return redirect( request, VIEW_CONFIRM_TEST_NEWSLETTER, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+        }
+
+        return redirect( request, VIEW_COMPOSE_NEWSLETTER, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+    }
+
+    /**
+     * Builds the page of the import of subscribers from a csv file
+     *
+     * @param request
+     *            The HTTP request
+     * @param model
+     *            the model of the page
+     * @return the html code for subscribers import page
+     */
+    @View( VIEW_IMPORT_SUBSCRIBERS )
+    public String getImportSubscribers( HttpServletRequest request, Models model )
+    {
+        return getImportPage( request, model, false );
+    }
+
+    /**
+     * Builds the page of the removal of subscribers listed in a csv file
+     *
+     * @param request
+     *            The HTTP request
+     * @param model
+     *            the model of the page
+     * @return the html code for subscribers import page
+     */
+    @View( value = VIEW_IMPORT_DELETE_SUBSCRIBERS, securityTokenAction = ACTION_IMPORT_SUBSCRIBERS )
+    public String getImportDeleteSubscribers( HttpServletRequest request, Models model )
+    {
+        return getImportPage( request, model, true );
+    }
+
+    /**
+     * Processes the import of subscribers due to a csv file, or their removal when the import deletes, and loads the subscribers management page
+     *
+     * @param request
+     *            The Http request
+     * @return The redirection to the subscribers of the newsletter, or the url of the error message
+     */
+    @Action( ACTION_IMPORT_SUBSCRIBERS )
+    public String doImportSubscribers( HttpServletRequest request )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+        boolean bImportDelete = Boolean.parseBoolean( request.getParameter( MARK_IMPORT_DELETE ) );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_IMPORT_SUBSCRIBERS ) )
+        {
+            return redirectAccessDenied( request );
+        }
+
+        int nNewsletterId = newsletter.getId( );
+
+        if ( request instanceof MultipartHttpServletRequest )
+        {
+            MultipartHttpServletRequest multi = (MultipartHttpServletRequest) request;
+            MultipartItem csvItem = multi.getFile( PARAMETER_SUBSCRIBERS_FILE );
+            String strMultiFileName = csvItem == null ? StringUtils.EMPTY : UploadUtil.cleanFileName( csvItem.getName( ) );
+
+            if ( csvItem == null || StringUtils.isEmpty( strMultiFileName ) )
             {
-                int nTemplateId = Integer.parseInt( strTemplateId );
-                NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( nTemplateId, getPlugin( ) );
-                newsletter.setNbSections( newsletterTemplate.getSectionNumber( ) );
-                newsletter.setNewsLetterTemplateId( nTemplateId );
-                NewsLetterHome.update( newsletter, getPlugin( ) );
-                int nNewOrder = NewsletterTopicHome.getNewOrder( nNewsletterId, newsletterTemplate.getSectionNumber( ), getPlugin( ) );
-                for ( NewsletterTopic topic : listTopics )
+                return redirectMessage( request, Messages.MANDATORY_FIELDS );
+            }
+
+            if ( !strMultiFileName.endsWith( CONSTANT_CSV_FILE_EXTENSION ) )
+            {
+                return redirectMessage( request, MESSAGE_CSV_FILE_EXTENSION );
+            }
+
+            List<String [ ]> tabUsers;
+            char cDelimiter = _strImportDelimiter.charAt( 0 );
+
+            try ( Reader fileReader = new InputStreamReader( csvItem.getInputStream( ) );
+                    CSVReader csvReader = new CSVReaderBuilder( fileReader ).withCSVParser( new CSVParserBuilder( ).withSeparator( cDelimiter ).build( ) )
+                            .build( ) )
+            {
+                tabUsers = csvReader.readAll( );
+            }
+            catch( IOException | CsvException e )
+            {
+                AppLogService.error( "Unable to read the csv file of the subscribers: {}", e.getMessage( ), e );
+
+                return redirectMessage( request, MESSAGE_CSV_FILE_EMPTY_OR_NOT_VALID_EMAILS );
+            }
+
+            if ( tabUsers == null || tabUsers.isEmpty( ) )
+            {
+                return redirectMessage( request, MESSAGE_CSV_FILE_EMPTY_OR_NOT_VALID_EMAILS );
+            }
+
+            int nColumnIndex = _nImportEmailColumnIndex;
+            Timestamp tToday = new Timestamp( System.currentTimeMillis( ) );
+
+            for ( String [ ] strEmailTemp : tabUsers )
+            {
+                if ( strEmailTemp.length <= nColumnIndex )
                 {
-                    if ( topic.getSection( ) > newsletterTemplate.getSectionNumber( ) )
-                    {
-                        topic.setSection( newsletterTemplate.getSectionNumber( ) );
-                        topic.setOrder( nNewOrder );
-                        nNewOrder++;
-                        NewsletterTopicHome.updateNewsletterTopic( topic, getPlugin( ) );
-                    }
+                    return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_COLUMN_INDEX_NOT_EXIST, AdminMessage.TYPE_ERROR ) );
+                }
+
+                String strEmail = strEmailTemp [nColumnIndex];
+
+                if ( strEmail != null && StringUtil.checkEmail( strEmail.trim( ) ) )
+                {
+                    importSubscriber( nNewsletterId, strEmail, bImportDelete, tToday );
                 }
             }
         }
 
-        Map<String, Object> model = new HashMap<String, Object>( );
+        return redirect( request, VIEW_MANAGE_SUBSCRIBERS, PARAMETER_NEWSLETTER_ID, nNewsletterId );
+    }
 
-        // We create an array with the number of topics in every section
+    /**
+     * Get the manage topics page
+     *
+     * @param request
+     *            The request
+     * @param model
+     *            the model of the page
+     * @return The HTML to display
+     */
+    @View( value = VIEW_MANAGE_TOPICS, securityTokenAction = ACTION_MODIFY_TOPICS )
+    public String getManageNewsletterTopics( HttpServletRequest request, Models model )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
+        {
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
+        }
+
+        int nNewsletterId = newsletter.getId( );
+        List<NewsletterTopic> listTopics = NewsletterTopicHome.findAllByIdNewsletter( nNewsletterId, getPlugin( ) );
+
         Integer [ ] tblSectionSize = new Integer [ newsletter.getNbSections( )];
         for ( int i = 0; i < newsletter.getNbSections( ); i++ )
         {
-            // The first section is 1, and we start from 0 so we consider the section i + 1
             tblSectionSize [i] = NewsletterTopicHome.getLastOrder( nNewsletterId, i + 1, getPlugin( ) );
         }
 
-        ReferenceList refListTopicType = getNewsletterTopicService().getNewsletterTopicTypeRefList( AdminUserService.getLocale( request ) );
+        ReferenceList refListTopicType = _newsletterTopicService.getNewsletterTopicTypeRefList( getLocale( ) );
+        listTopics.sort( Comparator.comparingInt( NewsletterTopic::getSection ).thenComparingInt( NewsletterTopic::getOrder ) );
 
-        UrlItem url = new UrlItem( JSP_URL_MANAGE_NEWSLETTER_TOPIC );
-        url.addParameter( PARAMETER_NEWSLETTER_ID, strNewsletterId );
-        Object object = request.getSession( ).getAttribute( PARAMETER_NEWSLETTER_TOPICS_TABLE_MANAGER );
-        DataTableManager<NewsletterTopic> tableManager = null;
-        if ( object instanceof DataTableManager<?> )
-        {
-            tableManager = (DataTableManager<NewsletterTopic>) object;
-            // If the table manager saved in session is not associated with this newsletter we create a new one
-            if ( !isTableManagerOfUrl( tableManager, url.getUrl( ) ) )
-            {
-                tableManager = null;
-            }
-        }
-        if ( tableManager == null )
-        {
-            tableManager = new DataTableManager<NewsletterTopic>( url.getUrl( ), url.getUrl( ),
-                    AppPropertiesService.getPropertyInt( PROPERTY_ITEMS_PER_PAGE, CONSTANT_DEFAULT_ITEM_PER_PAGE ), true );
-            tableManager.addFreeColumn( LABEL_NEWSLETTER_TOPIC_SECTION, CONSTANT_FREEMARKER_MACRO_COLUMN_SECTION );
-            tableManager.addColumn( LABEL_NEWSLETTER_TOPIC_ORDER, MARK_NEWSLETTER_TOPIC_ORDER, false );
-            tableManager.addColumn( LABEL_NEWSLETTER_TOPIC_TITLE, MARK_NEWSLETTER_TOPIC_TITLE, false );
-            tableManager.addColumn( LABEL_NEWSLETTER_TOPIC_TYPE, MARK_NEWSLETTER_TOPIC_TYPE, false );
-            tableManager.addActionColumn( LABEL_NEWSLETTER_ACTION );
-        }
-
-        tableManager.filterSortAndPaginate( request, listTopics );
-
-        AdminUser user = AdminUserService.getAdminUser( request );
-        Locale locale = AdminUserService.getLocale( request );
+        AdminUser user = getUser( );
         String strBaseUrl = AppPathService.getBaseUrl( request );
 
         Collection<NewsLetterTemplate> newsletterTemplatesList = NewsLetterTemplateHome.getTemplatesCollectionByType( NewsLetterTemplate.RESOURCE_TYPE,
                 getPlugin( ) );
         newsletterTemplatesList = AdminWorkgroupService.getAuthorizedCollection( newsletterTemplatesList, (User) user );
-        List<String> listNewsletterImage = new java.util.ArrayList<>( );
-        for ( int i = 0; i < newsletterTemplatesList.size(); i++ )
+        List<Integer> listMissingTemplateIds = new ArrayList<>( );
+        for ( NewsLetterTemplate newsletterTemplate : newsletterTemplatesList )
         {
-            NewsLetterTemplate newsletterTemplate = (NewsLetterTemplate) newsletterTemplatesList.toArray()[i];
-            String imageFileKey = newsletterTemplate.getPictureKey();
-            if(imageFileKey != null && StringUtils.isNumeric( imageFileKey ) )
+            if ( !_newsletterService.isTemplateAvailable( newsletterTemplate ) )
             {
-                fr.paris.lutece.portal.business.file.File luteceImageFile = fr.paris.lutece.plugins.newsletter.service.NewsletterFileService.getFileByKey( newsletterTemplate.getPictureKey( ) );
-                listNewsletterImage.add(java.util.Base64.getEncoder().encodeToString(luteceImageFile.getPhysicalFile().getValue()));
-            }
-            else
-            {
-                listNewsletterImage.add( StringUtils.EMPTY );
+                listMissingTemplateIds.add( newsletterTemplate.getId( ) );
             }
         }
-        String strPathImageTemplate = getNewsletterService().getImageFolderPath( AppPathService.getBaseUrl( request ) );
-        model.put( NewsLetterConstants.MARK_TEMPLATE_IMAGE_LIST, listNewsletterImage );
+
         model.put( MARK_NEWSLETTER, newsletter );
-        model.put( MARK_NEWSLETTER_TABLE_MANAGER, tableManager );
+        model.put( MARK_TOPICS_LIST, listTopics );
         model.put( MARK_LIST_TOPIC_TYPES, refListTopicType );
         model.put( MARK_SECTION_SIZES, tblSectionSize );
-        String strPreview = getNewsletterService().generateNewsletterHtmlCode( newsletter, newsletter.getNewsLetterTemplateId( ), strBaseUrl, user, locale );
-        model.put( MARK_HTML_CONTENT, ( strPreview == null ) ? null : HtmlMarkup.of( strPreview ) );
+        // Each topic is generated once, for its status and for the preview
+        Map<Integer, String> mapTopicContents = new HashMap<>( );
+        Map<String, String> mapTopicStatus = new HashMap<>( );
+        Map<String, String> mapTopicSummaries = new HashMap<>( );
+        for ( NewsletterTopic topic : listTopics )
+        {
+            String strContent = _newsletterTopicService.getTopicContent( topic, user, getLocale( ) );
+            mapTopicContents.put( topic.getId( ), strContent );
+            mapTopicStatus.put( Integer.toString( topic.getId( ) ), getTopicStatus( strContent ) );
+            String strSummary = _newsletterTopicService.getConfigurationSummary( topic, getLocale( ) );
+            if ( StringUtils.isNotBlank( strSummary ) )
+            {
+                mapTopicSummaries.put( Integer.toString( topic.getId( ) ), strSummary );
+            }
+        }
+
+        model.put( MARK_HTML_CONTENT, toMarkup( _newsletterService.generateNewsletterPreviewHtmlCode( newsletter, mapTopicContents, strBaseUrl, getLocale( ) ) ) );
+        model.put( MARK_TOPIC_STATUS, mapTopicStatus );
+        model.put( MARK_TOPIC_SUMMARIES, mapTopicSummaries );
+        model.put( MARK_DATE_LAST_SENDING, DateUtil.getDateString( newsletter.getDateLastSending( ), getLocale( ) ) );
         model.put( MARK_WEBAPP_URL, strBaseUrl );
         model.put( MARK_LOCALE, getLocale( ) );
         model.put( MARK_LIST_NEWSLETTER_TEMPLATES, newsletterTemplatesList );
+        model.put( MARK_MISSING_TEMPLATE_IDS, listMissingTemplateIds );
+        model.put( MARK_AVAILABLE_PICTURES, new ArrayList<>( _newsletterService.getTemplatePictureList( ).toMap( ).keySet( ) ) );
         model.put( MARK_NEWSLETTER_TEMPLATE_ID, newsletter.getNewsLetterTemplateId( ) );
-        model.put( MARK_IMG_PATH, strPathImageTemplate );
+        model.put( MARK_IMG_PATH, _newsletterService.getImageFolderPath( strBaseUrl ) );
+        fillNewsletterTabsModel( model, newsletter );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_MANAGE_NEWSLETTER_TOPICS, AdminUserService.getLocale( request ), model );
-        String strContent = template.getHtml( );
-        tableManager.clearItems( );
-        request.getSession( ).setAttribute( PARAMETER_NEWSLETTER_TOPICS_TABLE_MANAGER, tableManager );
-
-        return getAdminPage( strContent );
+        return getPage( MESSAGE_PAGE_TITLE_MANAGE_TOPICS, TEMPLATE_MANAGE_NEWSLETTER_TOPICS );
     }
 
     /**
-     * Create a news topic in a newsletter
-     * 
-     * @param request
-     *            The request
-     * @return The URL to redirect to.
+     * Get the status of a topic from its generated content
+     *
+     * @param strContent
+     *            The html content of the topic
+     * @return {@code unconfigured} when the topic gives no content at all (its configuration is incomplete), {@code empty} when it has nothing
+     *         to show for the period, {@code ok} otherwise
      */
-    public String doAddNewsletterTopic( HttpServletRequest request )
+    private static String getTopicStatus( String strContent )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        String strTopicType = request.getParameter( PARAMETER_TOPIC_TYPE );
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-
-        NewsletterTopic newsletterTopic = new NewsletterTopic( );
-        newsletterTopic.setIdNewsletter( nNewsletterId );
-        newsletterTopic.setTopicTypeCode( strTopicType );
-        String strSectionNumber = request.getParameter( PARAMETER_TOPIC_SECTION_NUMBER );
-        if ( StringUtils.isNumeric( strSectionNumber ) )
+        if ( strContent == null )
         {
-            newsletterTopic.setSection( Integer.parseInt( strSectionNumber ) );
+            return TOPIC_STATUS_UNCONFIGURED;
         }
-        else
-        {
-            newsletterTopic.setSection( 1 );
-        }
-        getNewsletterTopicService().createNewsletterTopic( newsletterTopic, getUser( ), AdminUserService.getLocale( request ) );
-
-        UrlItem urlItem = new UrlItem( JSP_URL_MODIFY_TOPIC_CONFIG );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, strNewsletterId );
-        urlItem.addParameter( PARAMETER_TOPIC_ID, newsletterTopic.getId( ) );
-        return urlItem.getUrl( );
+        return StringUtils.isBlank( strContent ) ? TOPIC_STATUS_EMPTY : TOPIC_STATUS_OK;
     }
 
     /**
-     * Get a confirmation page before removing a newsletter topic
-     * 
+     * Processes an operation of the content page of a newsletter: the choice of its template, the addition of a topic, the move of a topic up or
+     * down, or the change of its section
+     *
      * @param request
      *            The request
-     * @return The URL to redirect to.
+     * @return The redirection to the content page, or to the configuration of the topic added
      */
-    public String confirmRemoveNewsletterTopic( HttpServletRequest request )
+    @Action( ACTION_MODIFY_TOPICS )
+    public String doModifyNewsletterTopics( HttpServletRequest request )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        if ( !StringUtils.isNumeric( strNewsletterId ) )
-        {
-            return JSP_URL_MANAGE_NEWSLETTER;
-        }
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
+        NewsLetter newsletter = findNewsletter( request );
 
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
         {
-            return JSP_URL_MANAGE_NEWSLETTER;
+            return redirectAccessDenied( request );
         }
-        UrlItem urlItem = new UrlItem( JSP_URL_DO_REMOVE_TOPIC );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, strNewsletterId );
+
+        String strOperation = StringUtils.defaultString( request.getParameter( PARAMETER_OPERATION ) );
+
+        switch( strOperation )
+        {
+            case OPERATION_UPDATE_TEMPLATE:
+                updateTemplate( request, newsletter );
+                break;
+            case OPERATION_ADD_TOPIC:
+                NewsletterTopic newsletterTopic = addTopic( request, newsletter );
+                return redirect( request, VIEW_MODIFY_TOPIC_CONFIG, PARAMETER_NEWSLETTER_ID, newsletter.getId( ), PARAMETER_TOPIC_ID, newsletterTopic.getId( ) );
+            case OPERATION_MOVE_TOPIC:
+                NewsletterTopic topicToMove = findTopic( request, newsletter );
+                if ( topicToMove != null )
+                {
+                    _newsletterTopicService.modifyNewsletterTopicOrder( topicToMove, Boolean.parseBoolean( request.getParameter( PARAMETER_MOVE_UP ) ) );
+                }
+                break;
+            case OPERATION_CHANGE_SECTION:
+                NewsletterTopic topicToChange = findTopic( request, newsletter );
+                String strSection = request.getParameter( PARAMETER_TOPIC_SECTION_NUMBER );
+                if ( topicToChange != null && StringUtils.isNumeric( strSection ) )
+                {
+                    _newsletterTopicService.modifyNewsletterTopicSection( topicToChange, Integer.parseInt( strSection ) );
+                }
+                break;
+            default:
+                return redirectAccessDenied( request );
+        }
+
+        return redirect( request, VIEW_MANAGE_TOPICS, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
+    }
+
+    /**
+     * Asks the confirmation of the removal of a newsletter topic
+     *
+     * @param request
+     *            The request
+     * @return the url of the confirmation message
+     */
+    @View( value = VIEW_CONFIRM_REMOVE_TOPIC, securityTokenAction = ACTION_REMOVE_TOPIC )
+    public String getConfirmRemoveNewsletterTopic( HttpServletRequest request )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) || findTopic( request, newsletter ) == null )
+        {
+            return redirectAccessDenied( request );
+        }
+
+        UrlItem urlItem = new UrlItem( getActionUrl( ACTION_REMOVE_TOPIC ) );
+        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
         urlItem.addParameter( PARAMETER_TOPIC_ID, request.getParameter( PARAMETER_TOPIC_ID ) );
-        urlItem.addParameter( PARAMETER_TOPIC_TYPE, request.getParameter( PARAMETER_TOPIC_TYPE ) );
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_TOPIC, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
+
+        return redirect( request, AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_TOPIC, urlItem.getUrl( ), AdminMessage.TYPE_CONFIRMATION ) );
     }
 
     /**
      * Remove a newsletter topic
-     * 
+     *
      * @param request
      *            The request
-     * @return The URL to redirect to.
+     * @return The redirection to the content page
      */
+    @Action( ACTION_REMOVE_TOPIC )
     public String doRemoveNewsletterTopic( HttpServletRequest request )
     {
-        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
-        if ( !StringUtils.isNumeric( strNewsletterId ) )
+        NewsLetter newsletter = findNewsletter( request );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) )
         {
-            return JSP_URL_MANAGE_NEWSLETTER;
+            return redirectAccessDenied( request );
         }
-        int nNewsletterId = Integer.parseInt( strNewsletterId );
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
 
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
-                || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, strNewsletterId, NewsletterResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        NewsletterTopic newsletterTopic = findTopic( request, newsletter );
+
+        if ( newsletterTopic != null )
         {
-            return JSP_URL_MANAGE_NEWSLETTER;
+            _newsletterTopicService.removeNewsletterTopic( newsletterTopic, getUser( ) );
         }
-        String strTopicId = request.getParameter( PARAMETER_TOPIC_ID );
-        if ( !StringUtils.isNumeric( strTopicId ) )
-        {
-            return JSP_URL_MANAGE_NEWSLETTER;
-        }
-        int nIdTopic = Integer.parseInt( strTopicId );
-        NewsletterTopic newsletterTopic = NewsletterTopicHome.findByPrimaryKey( nIdTopic, getPlugin( ) );
-        getNewsletterTopicService().removeNewsletterTopic( newsletterTopic, AdminUserService.getAdminUser( request ) );
 
-        UrlItem urlItem = new UrlItem( JSP_URL_MANAGE_TOPICS );
-        urlItem.addParameter( PARAMETER_NEWSLETTER_ID, strNewsletterId );
-        return urlItem.getUrl( );
-
-    }
-
-    /**
-     * Change the order of a topic, and display the manage topics page.
-     * 
-     * @param request
-     *            The request
-     * @return The HTML content to display
-     */
-    public String getMoveNewsletterTopic( HttpServletRequest request )
-    {
-        String strTopicId = request.getParameter( PARAMETER_TOPIC_ID );
-
-        if ( !StringUtils.isNumeric( strTopicId ) )
-        {
-            return getManageNewsletterTopics( request );
-        }
-        int nIdTopic = Integer.parseInt( strTopicId );
-        String strMoveUp = request.getParameter( PARAMETER_MOVE_UP );
-        NewsletterTopic newsletterTopic = NewsletterTopicHome.findByPrimaryKey( nIdTopic, getPlugin( ) );
-        getNewsletterTopicService().modifyNewsletterTopicOrder( newsletterTopic, Boolean.parseBoolean( strMoveUp ) );
-
-        return getManageNewsletterTopics( request );
+        return redirect( request, VIEW_MANAGE_TOPICS, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
     }
 
     /**
      * Get the modification page of a newsletter topic configuration
-     * 
+     *
      * @param request
      *            The request
+     * @param model
+     *            the model of the page
      * @return The html content to display
      */
-    public String getModifyTopicConfig( HttpServletRequest request )
+    @View( VIEW_MODIFY_TOPIC_CONFIG )
+    public String getModifyTopicConfig( HttpServletRequest request, Models model )
     {
-        String strTopicId = request.getParameter( PARAMETER_TOPIC_ID );
+        NewsLetter newsletter = findNewsletter( request );
+        NewsletterTopic newsletterTopic = isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) ? findTopic( request, newsletter ) : null;
 
-        if ( !StringUtils.isNumeric( strTopicId ) )
+        if ( newsletterTopic == null )
         {
-            return getManageNewsletterTopics( request );
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
         }
-        int nIdTopic = Integer.parseInt( strTopicId );
 
-        setPageTitleProperty( PROPERTY_PAGE_TITLE_MODIFY_TOPIC_CONFIGURATION );
-        NewsletterTopic newsletterTopic = NewsletterTopicHome.findByPrimaryKey( nIdTopic, getPlugin( ) );
-        Locale locale = AdminUserService.getLocale( request );
-        String strContent = getNewsletterTopicService().getConfigurationPage( newsletterTopic, AppPathService.getBaseUrl( request ),
-                AdminUserService.getAdminUser( request ), locale );
-
-        Map<String, Object> model = new HashMap<String, Object>( );
-        model.put( MARK_CONTENT, HtmlMarkup.of( strContent ) );
+        model.put( MARK_CONTENT,
+                toMarkup( _newsletterTopicService.getConfigurationPage( newsletterTopic, AppPathService.getBaseUrl( request ), getUser( ), getLocale( ) ) ) );
         model.put( MARK_TOPIC, newsletterTopic );
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_MODIFY_TOPIC_CONFIG, locale, model );
-        return getAdminPage( template.getHtml( ) );
+
+        return getPage( PROPERTY_PAGE_TITLE_MODIFY_TOPIC_CONFIGURATION, TEMPLATE_MODIFY_TOPIC_CONFIG );
     }
 
     /**
-     * Save the configuration of a topic
-     * 
+     * Save the configuration of a topic, unless the cancel button was pushed
+     *
      * @param request
      *            The request
-     * @return The URL to redirect to
+     * @return The redirection to the content page
      */
+    @Action( ACTION_MODIFY_TOPIC_CONFIG )
     public String doModifyTopicConfig( HttpServletRequest request )
     {
-        String strTopicId = request.getParameter( PARAMETER_TOPIC_ID );
+        NewsLetter newsletter = findNewsletter( request );
+        NewsletterTopic newsletterTopic = isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY ) ? findTopic( request, newsletter ) : null;
 
-        if ( !StringUtils.isNumeric( strTopicId ) )
+        if ( newsletterTopic == null )
         {
-            return JSP_URL_MANAGE_NEWSLETTER;
+            return redirectAccessDenied( request );
         }
-        int nIdTopic = Integer.parseInt( strTopicId );
 
-        NewsletterTopic newsletterTopic = NewsletterTopicHome.findByPrimaryKey( nIdTopic, getPlugin( ) );
-
-        UrlItem url = new UrlItem( JSP_URL_MANAGE_NEWSLETTER_TOPIC );
-        url.addParameter( PARAMETER_NEWSLETTER_ID, Integer.toString( newsletterTopic.getIdNewsletter( ) ) );
-
-        // If the user didn't push the 'cancel' button, we save the configuration
         if ( request.getParameter( PARAMETER_CANCEL ) == null )
         {
             String strTitle = request.getParameter( PARAMETER_TITLE );
@@ -2535,37 +2078,43 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
                 NewsletterTopicHome.updateNewsletterTopic( newsletterTopic, getPlugin( ) );
             }
 
-            Map<String, String [ ]> mapParameters = request.getParameterMap( );
-            getNewsletterTopicService().saveConfiguration( mapParameters, newsletterTopic, AdminUserService.getAdminUser( request ),
-                    AdminUserService.getLocale( request ) );
+            _newsletterTopicService.saveConfiguration( request.getParameterMap( ), newsletterTopic, getUser( ), getLocale( ) );
         }
-        return AppPathService.getBaseUrl( request ) + url.getUrl( );
+
+        return redirect( request, VIEW_MANAGE_TOPICS, PARAMETER_NEWSLETTER_ID, newsletter.getId( ) );
     }
 
     /**
-     * Change the section of a newsletter topic.
-     * 
+     * Processes the copy of a newsletter
+     *
      * @param request
-     *            The request
-     * @return The html to display
+     *            The Http request
+     * @return the redirection to the newsletters list
      */
-    public String doChangeNewsletterTopicSection( HttpServletRequest request )
+    @Action( ACTION_COPY_NEWSLETTER )
+    public String doCopyNewsLetter( HttpServletRequest request )
     {
-        String strTopicId = request.getParameter( PARAMETER_TOPIC_ID );
-        String strSection = request.getParameter( PARAMETER_TOPIC_SECTION_NUMBER );
+        NewsLetter newsletter = findNewsletter( request );
 
-        if ( !StringUtils.isNumeric( strTopicId ) || !StringUtils.isNumeric( strSection ) )
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_CREATE ) )
         {
-            return getManageNewsletterTopics( request );
+            return redirectAccessDenied( request );
         }
-        int nIdTopic = Integer.parseInt( strTopicId );
-        int nSection = Integer.parseInt( strSection );
 
-        NewsletterTopic newsletterTopic = NewsletterTopicHome.findByPrimaryKey( nIdTopic, getPlugin( ) );
+        Object [ ] tabNewsLetterTileCopy = {
+                newsletter.getName( )
+        };
+        String strTitleCopySuggest = I18nService.getLocalizedString( LABLE_COPY_NEWSLETTER_TITLE, tabNewsLetterTileCopy, getLocale( ) );
 
-        getNewsletterTopicService().modifyNewsletterTopicSection( newsletterTopic, nSection );
+        if ( strTitleCopySuggest != null )
+        {
+            // The name of the copy must fit in the column of the name
+            newsletter.setName( StringUtils.left( strTitleCopySuggest, NEWSLETTER_NAME_MAX_LENGTH ) );
+        }
 
-        return getManageNewsletterTopics( request );
+        _newsletterService.copyExistingNewsletter( newsletter, getUser( ), getLocale( ) );
+
+        return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
     }
 
     /**
@@ -2581,8 +2130,442 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     // Private Implementation
 
     /**
+     * Builds the page of the import of subscribers, adding or removing them
+     *
+     * @param request
+     *            The HTTP request
+     * @param model
+     *            the model of the page
+     * @param bImportDelete
+     *            true if the file lists subscribers to remove
+     * @return the html code for subscribers import page
+     */
+    private String getImportPage( HttpServletRequest request, Models model, boolean bImportDelete )
+    {
+        NewsLetter newsletter = findNewsletter( request );
+
+        if ( !isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS ) )
+        {
+            return redirectView( request, VIEW_MANAGE_NEWSLETTERS );
+        }
+
+        model.put( MARK_IMPORT_DELETE, bImportDelete );
+        model.put( MARK_NEWSLETTER, newsletter );
+        fillNewsletterTabsModel( model, newsletter );
+
+        return getPage( bImportDelete ? PROPERTY_PAGE_TITLE_IMPORT_DELETE : PROPERTY_PAGE_TITLE_IMPORT, TEMPLATE_IMPORT_SUBSCRIBERS );
+    }
+
+    /**
+     * Adds a subscriber read in an import file to a newsletter, or removes him from it
+     *
+     * @param nNewsletterId
+     *            the identifier of the newsletter
+     * @param strEmail
+     *            the email of the subscriber
+     * @param bImportDelete
+     *            true to remove the subscriber, false to add him
+     * @param tToday
+     *            the date of the subscription
+     */
+    private void importSubscriber( int nNewsletterId, String strEmail, boolean bImportDelete, Timestamp tToday )
+    {
+        Subscriber subscriber = SubscriberHome.findByEmail( strEmail, getPlugin( ) );
+
+        if ( bImportDelete )
+        {
+            if ( subscriber != null )
+            {
+                NewsLetterHome.removeSubscriber( nNewsletterId, subscriber.getId( ), getPlugin( ) );
+            }
+
+            return;
+        }
+
+        if ( subscriber == null )
+        {
+            subscriber = new Subscriber( );
+            subscriber.setEmail( strEmail );
+            SubscriberHome.create( subscriber, getPlugin( ) );
+        }
+
+        NewsLetterHome.addSubscriber( nNewsletterId, subscriber.getId( ), tToday, getPlugin( ) );
+    }
+
+    /**
+     * Gives a newsletter the template chosen in the content page: its number of sections becomes the one of the template, and the topics of a
+     * section the template does not have move to its last section
+     *
+     * @param request
+     *            The request
+     * @param newsletter
+     *            the newsletter
+     */
+    private void updateTemplate( HttpServletRequest request, NewsLetter newsletter )
+    {
+        String strTemplateId = request.getParameter( MARK_NEWSLETTER_TEMPLATE_ID );
+
+        if ( !StringUtils.isNumeric( strTemplateId ) )
+        {
+            return;
+        }
+
+        NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( Integer.parseInt( strTemplateId ), getPlugin( ) );
+
+        if ( newsletterTemplate == null || newsletterTemplate.getId( ) == 0 || !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) )
+        {
+            return;
+        }
+
+        newsletter.setNbSections( newsletterTemplate.getSectionNumber( ) );
+        newsletter.setNewsLetterTemplateId( newsletterTemplate.getId( ) );
+        NewsLetterHome.update( newsletter, getPlugin( ) );
+
+        int nNewOrder = NewsletterTopicHome.getNewOrder( newsletter.getId( ), newsletterTemplate.getSectionNumber( ), getPlugin( ) );
+        for ( NewsletterTopic topic : NewsletterTopicHome.findAllByIdNewsletter( newsletter.getId( ), getPlugin( ) ) )
+        {
+            if ( topic.getSection( ) > newsletterTemplate.getSectionNumber( ) )
+            {
+                topic.setSection( newsletterTemplate.getSectionNumber( ) );
+                topic.setOrder( nNewOrder );
+                nNewOrder++;
+                NewsletterTopicHome.updateNewsletterTopic( topic, getPlugin( ) );
+            }
+        }
+    }
+
+    /**
+     * Creates a topic in a newsletter, of the type and in the section chosen
+     *
+     * @param request
+     *            The request
+     * @param newsletter
+     *            the newsletter
+     * @return the topic created
+     */
+    private NewsletterTopic addTopic( HttpServletRequest request, NewsLetter newsletter )
+    {
+        NewsletterTopic newsletterTopic = new NewsletterTopic( );
+        newsletterTopic.setIdNewsletter( newsletter.getId( ) );
+        newsletterTopic.setTopicTypeCode( request.getParameter( PARAMETER_TOPIC_TYPE ) );
+        String strSectionNumber = request.getParameter( PARAMETER_TOPIC_SECTION_NUMBER );
+        newsletterTopic.setSection( StringUtils.isNumeric( strSectionNumber ) ? Integer.parseInt( strSectionNumber ) : 1 );
+        _newsletterTopicService.createNewsletterTopic( newsletterTopic, getUser( ), getLocale( ) );
+
+        return newsletterTopic;
+    }
+
+    /**
+     * Removes an archive of a newsletter
+     *
+     * @param newsletter
+     *            the newsletter
+     * @param nSendingNewsletterId
+     *            the identifier of the archive, removed only when it belongs to the newsletter
+     */
+    private void removeSending( NewsLetter newsletter, int nSendingNewsletterId )
+    {
+        SendingNewsLetter sending = SendingNewsLetterHome.findByPrimaryKey( nSendingNewsletterId, getPlugin( ) );
+
+        if ( sending != null && sending.getNewsLetterId( ) == newsletter.getId( ) )
+        {
+            SendingNewsLetterHome.remove( nSendingNewsletterId, getPlugin( ) );
+        }
+    }
+
+    /**
+     * Returns the newsletter whose identifier is in the request
+     *
+     * @param request
+     *            the HTTP request
+     * @return the newsletter, null when the identifier is missing, matches no newsletter or a newsletter outside the workgroups of the user
+     */
+    private NewsLetter findNewsletter( HttpServletRequest request )
+    {
+        String strNewsletterId = request.getParameter( PARAMETER_NEWSLETTER_ID );
+        NewsLetter newsletter = StringUtils.isNumeric( strNewsletterId ) ? NewsLetterHome.findByPrimaryKey( Integer.parseInt( strNewsletterId ), getPlugin( ) )
+                : null;
+
+        return ( newsletter != null && AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) ) ) ? newsletter : null;
+    }
+
+    /**
+     * Returns the topic whose identifier is in the request, when it belongs to a newsletter
+     *
+     * @param request
+     *            the HTTP request
+     * @param newsletter
+     *            the newsletter
+     * @return the topic, null when the identifier is missing or matches no topic of the newsletter
+     */
+    private NewsletterTopic findTopic( HttpServletRequest request, NewsLetter newsletter )
+    {
+        String strTopicId = request.getParameter( PARAMETER_TOPIC_ID );
+
+        if ( !StringUtils.isNumeric( strTopicId ) )
+        {
+            return null;
+        }
+
+        NewsletterTopic newsletterTopic = NewsletterTopicHome.findByPrimaryKey( Integer.parseInt( strTopicId ), getPlugin( ) );
+
+        return ( newsletterTopic != null && newsletterTopic.getIdNewsletter( ) == newsletter.getId( ) ) ? newsletterTopic : null;
+    }
+
+    /**
+     * Checks that a newsletter exists and that the user holds its workgroup and a permission on it
+     *
+     * @param newsletter
+     *            the newsletter, may be null
+     * @param strPermission
+     *            the RBAC permission
+     * @return true if the user may act on the newsletter
+     */
+    private boolean isAuthorized( NewsLetter newsletter, String strPermission )
+    {
+        return newsletter != null && AdminWorkgroupService.isAuthorized( newsletter, (User) getUser( ) )
+                && RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, Integer.toString( newsletter.getId( ) ), strPermission, (User) getUser( ) );
+    }
+
+    /**
+     * Checks that the user may manage the advanced settings of the newsletters
+     *
+     * @param request
+     *            the HTTP request
+     * @throws AccessDeniedException
+     *             if the user is not allowed
+     */
+    private void checkAdvancedSettingsPermission( HttpServletRequest request ) throws AccessDeniedException
+    {
+        if ( !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, RBAC.WILDCARD_RESOURCES_ID,
+                NewsletterResourceIdService.PERMISSION_NEWSLETTER_ADVANCED_SETTINGS, (User) getUser( ) ) )
+        {
+            throw new AccessDeniedException( MESSAGE_USER_NOT_ALLOWED_NEWSLETTER_PROPERTIES + AdminUserService.getAdminUser( request ).getAccessCode( ) );
+        }
+    }
+
+    /**
+     * Builds the list of the editors of the composition of the newsletters: GrapesJS, the rich text editor of the back office of the site, then
+     * each rich text editor the back office offers
+     *
+     * @return the editors, by value of the property
+     */
+    private ReferenceList buildEditorList( )
+    {
+        ReferenceList listEditorsBackOffice = RichTextEditorService.getListEditorsForBackOffice( getLocale( ) );
+        String strSiteEditor = listEditorsBackOffice.toMap( ).getOrDefault( RichTextEditorService.getBackOfficeDefaultEditor( ), StringUtils.EMPTY );
+        ReferenceList listEditors = new ReferenceList( );
+        listEditors.addItem( NewsLetterProperties.EDITOR_GRAPESJS, I18nService.getLocalizedString( PROPERTY_EDITOR_GRAPESJS, getLocale( ) ) );
+        listEditors.addItem( NewsLetterProperties.EDITOR_LUTECE, I18nService.getLocalizedString( PROPERTY_EDITOR_SITE, new Object [ ] {
+                strSiteEditor
+        }, getLocale( ) ) );
+        listEditors.addAll( listEditorsBackOffice );
+
+        return listEditors;
+    }
+
+    /**
+     * Returns the rich text editor chosen for the composition of the newsletters when it is not the one of the back office of the site
+     *
+     * @param properties
+     *            the properties of the newsletters
+     * @return the name of the editor, empty for GrapesJS, for the editor of the back office of the site, or for an editor the back office no longer
+     *         offers
+     */
+    private String getChosenEditor( NewsLetterProperties properties )
+    {
+        String strEditor = properties.getEditor( );
+
+        if ( !properties.isLuteceEditor( ) || NewsLetterProperties.EDITOR_LUTECE.equals( strEditor )
+                || strEditor.equals( RichTextEditorService.getBackOfficeDefaultEditor( ) )
+                || !RichTextEditorService.getListEditorsForBackOffice( getLocale( ) ).toMap( ).containsKey( strEditor ) )
+        {
+            return StringUtils.EMPTY;
+        }
+
+        return strEditor;
+    }
+
+    /**
+     * Builds the profile of an editor for the newsletters and the connected user, in the form the editor templates of the core read it
+     *
+     * @param strEditor
+     *            the name of the editor
+     * @return the plugin, the name of the profile, the editor and the config of the profile
+     */
+    private Map<String, String> buildEditorProfile( String strEditor )
+    {
+        EditorProfile profile = _editorProfileService.getProfile( strEditor, NewsletterPlugin.PLUGIN_NAME, getUser( ) );
+        Map<String, String> mapProfile = new HashMap<>( );
+        mapProfile.put( KEY_PROFILE_PLUGIN, NewsletterPlugin.PLUGIN_NAME );
+        mapProfile.put( KEY_PROFILE_NAME, ( profile != null ) ? profile.getName( ) : StringUtils.EMPTY );
+        mapProfile.put( KEY_PROFILE_EDITOR, strEditor );
+        mapProfile.put( KEY_PROFILE_CONFIG,
+                ( profile != null && StringUtils.isNotBlank( profile.getConfig( ) ) ) ? profile.getConfig( ) : EditorProfile.EMPTY_CONFIG );
+
+        return mapProfile;
+    }
+
+    /**
+     * Tells whether the user may clean the subscribers of all the newsletters
+     *
+     * @return true if the user holds the permission of cleaning the subscribers
+     */
+    private boolean isCleanSubscribersAllowed( )
+    {
+        return RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, null, NewsletterResourceIdService.PERMISSION_CLEAN_SUBSCRIBERS, (User) getUser( ) );
+    }
+
+    /**
+     * Builds the list of the choices of the unsubscription link
+     *
+     * @param strTrueCode
+     *            the code of the choice of the link
+     * @param strFalseCode
+     *            the code of the choice of no link
+     * @return the list
+     */
+    private ReferenceList buildUnsubscribeList( String strTrueCode, String strFalseCode )
+    {
+        ReferenceList listUnsubscribe = new ReferenceList( );
+        listUnsubscribe.addItem( strTrueCode, I18nService.getLocalizedString( PROPERTY_LABEL_UNSUBSCRIBE_TRUE, getLocale( ) ) );
+        listUnsubscribe.addItem( strFalseCode, I18nService.getLocalizedString( PROPERTY_LABEL_UNSUBSCRIBE_FALSE, getLocale( ) ) );
+
+        return listUnsubscribe;
+    }
+
+    /**
+     * Redirects to the message telling the user he is not allowed
+     *
+     * @param request
+     *            the HTTP request
+     * @return the redirection
+     */
+    private String redirectAccessDenied( HttpServletRequest request )
+    {
+        return redirect( request, AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR ) );
+    }
+
+    /**
+     * Redirects to a message that stops the operation
+     *
+     * @param request
+     *            the HTTP request
+     * @param strMessageKey
+     *            the key of the message
+     * @return the redirection
+     */
+    private String redirectMessage( HttpServletRequest request, String strMessageKey )
+    {
+        return redirect( request, AdminMessageService.getMessageUrl( request, strMessageKey, AdminMessage.TYPE_STOP ) );
+    }
+
+    /**
+     * Remove spaces from a recipient list
+     *
+     * @param strRecipientLists
+     *            The recipient list
+     * @return the recipient list without spaces before and after each email.
+     */
+    private String cleanEmails( String strRecipientLists )
+    {
+        StringBuilder strCleanTestRecipients = new StringBuilder( );
+        String strDelimiter = _strImportDelimiter;
+
+        for ( String email : strRecipientLists.split( strDelimiter ) )
+        {
+            strCleanTestRecipients.append( email.trim( ) );
+            strCleanTestRecipients.append( strDelimiter );
+        }
+
+        return strCleanTestRecipients.toString( );
+    }
+
+    /**
+     * Reads the date entered in the newsletter search form; the date picker sends it as yyyy-MM-dd
+     *
+     * @param strDate
+     *            the submitted value
+     * @return the date, or null when the value is empty or not a date
+     */
+    private static LocalDate parseSearchDate( String strDate )
+    {
+        String strValue = StringUtils.trimToEmpty( strDate );
+        if ( strValue.length( ) < 10 )
+        {
+            return null;
+        }
+        try
+        {
+            return LocalDate.parse( strValue.substring( 0, 10 ) );
+        }
+        catch( DateTimeParseException e )
+        {
+            return null;
+        }
+    }
+
+    /**
+     * Tells whether a newsletter matches the search criteria of the newsletter list: its name contains the searched text, ignoring case, and
+     * it has been sent, the last time on or after the searched date
+     *
+     * @param newsletter
+     *            the newsletter
+     * @param dateLastSending
+     *            the date of the last sending found in the sending archive, null when the newsletter has never been sent
+     * @param strSearchName
+     *            the searched text, empty for no criterion
+     * @param dateSearch
+     *            the searched date, null for no criterion
+     * @return true if the newsletter matches every criterion given
+     */
+    static boolean matchesSearch( NewsLetter newsletter, Timestamp dateLastSending, String strSearchName, LocalDate dateSearch )
+    {
+        if ( StringUtils.isNotEmpty( strSearchName ) && !Strings.CI.contains( newsletter.getName( ), strSearchName ) )
+        {
+            return false;
+        }
+        if ( dateSearch != null )
+        {
+            return dateLastSending != null && !dateLastSending.toLocalDateTime( ).toLocalDate( ).isBefore( dateSearch );
+        }
+        return true;
+    }
+
+    /**
+     * Puts in the model what the tabs shared by the newsletter screens need: the permissions that show or hide the settings, content and
+     * compose entries, the subscribers, archive and sending entries, the number of subscribers, all and confirmed, and the name of the template of
+     * the newsletter when its file is missing from the folder of the newsletter templates.
+     *
+     * @param model
+     *            the model of the page
+     * @param newsletter
+     *            the newsletter displayed
+     */
+    private void fillNewsletterTabsModel( Models model, NewsLetter newsletter )
+    {
+        User user = (User) getUser( );
+        model.put( MARK_NEWSLETTER_ALLOW_MODIFICATION, RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MODIFY, user ) );
+        model.put( MARK_NEWSLETTER_ALLOW_MANAGE_SUBSCRIBERS,
+                RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_MANAGE_SUBSCRIBERS, user ) );
+        model.put( MARK_NEWSLETTER_ALLOW_MANAGE_ARCHIVE, RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_ARCHIVE, user ) );
+        model.put( MARK_NEWSLETTER_ALLOW_SENDING, RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_SEND, user ) );
+        Pair<Integer, Integer> subscriberCounts = NewsLetterHome.findSubscriberCounts( newsletter.getId( ), getPlugin( ) );
+        model.put( MARK_NEWSLETTER_COUNT_SUBSCRIBERS, subscriberCounts.getFirst( ) );
+        model.put( MARK_NEWSLETTER_COUNT_ACTIVE_SUBSCRIBERS, subscriberCounts.getSecond( ) );
+        if ( newsletter.getNewsLetterTemplateId( ) > 0 )
+        {
+            NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( newsletter.getNewsLetterTemplateId( ), getPlugin( ) );
+            if ( newsletterTemplate != null && newsletterTemplate.getId( ) > 0 && !_newsletterService.isTemplateAvailable( newsletterTemplate ) )
+            {
+                model.put( MARK_NEWSLETTER_TEMPLATE_MISSING, newsletterTemplate.getTemplateName( ) );
+            }
+        }
+    }
+
+    /**
      * To translate the absolute url's in SEMI-relativre url's of the html_content ( use before insertion in db)
-     * 
+     *
      * @param strContent
      *            The html code
      * @param strBaseUrl
@@ -2591,15 +2574,12 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
      */
     private String doClean( String strContent, String strBaseUrl )
     {
-        String strNewContent = strContent;
-        strNewContent = StringUtil.substitute( strNewContent, NewsLetterConstants.WEBAPP_PATH_FOR_LINKSERVICE, strBaseUrl );
-
-        return strNewContent;
+        return StringUtil.substitute( strContent, NewsLetterConstants.WEBAPP_PATH_FOR_LINKSERVICE, strBaseUrl );
     }
 
     /**
      * Tests whether all the e-mails represented by a string are valid
-     * 
+     *
      * @param strRecipientLists
      *            The list of recipients
      * @return The last wrong invalid e-mail in the list or an empty String if all e-mails are valid
@@ -2607,16 +2587,13 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
     private String isWrongEmail( String strRecipientLists )
     {
         String strWrongEmail = StringUtils.EMPTY;
+        String strDelimiter = _strImportDelimiter;
 
-        String strDelimiter = AppPropertiesService.getProperty( PROPERTY_IMPORT_DELIMITER );
-
-        String [ ] strEmails = strRecipientLists.split( strDelimiter );
-
-        for ( int j = 0; j < strEmails.length; j++ )
+        for ( String strEmail : StringUtils.defaultString( strRecipientLists ).split( strDelimiter ) )
         {
-            if ( !StringUtil.checkEmail( strEmails [j] ) )
+            if ( !StringUtil.checkEmail( strEmail ) )
             {
-                strWrongEmail = strEmails [j];
+                strWrongEmail = strEmail;
             }
         }
 
@@ -2625,23 +2602,18 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
 
     /**
      * Check if user is authozired to create a newsletter
-     * 
-     * @param request
-     *            The {@link HttpServletRequest}
+     *
      * @return true if creation is authorized, false otherwise
      */
-    private boolean isNewsletterCreationAllowed( HttpServletRequest request )
+    private boolean isNewsletterCreationAllowed( )
     {
-        User user = AdminUserService.getAdminUser( request );
+        User user = (User) getUser( );
         if ( RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE, RBAC.WILDCARD_RESOURCES_ID, NewsletterResourceIdService.PERMISSION_CREATE, user ) )
         {
             return true;
         }
 
-        Collection<NewsLetter> listNewsletter = NewsLetterHome.findAll( getPlugin( ) );
-        listNewsletter = AdminWorkgroupService.getAuthorizedCollection( listNewsletter, user );
-
-        for ( NewsLetter newsletter : listNewsletter )
+        for ( NewsLetter newsletter : AdminWorkgroupService.getAuthorizedCollection( NewsLetterHome.findAll( getPlugin( ) ), user ) )
         {
             if ( RBACService.isAuthorized( newsletter, NewsletterResourceIdService.PERMISSION_CREATE, user ) )
             {
@@ -2654,27 +2626,25 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
 
     /**
      * Takes a list of recipients in a form of a String and converts it into a list of subscribers
-     * 
+     *
      * @param strRecipients
      *            A list of recipients as a String
      * @return A list of subscibers
      */
     private Collection<Subscriber> convertToList( String strRecipients )
     {
-        Collection<Subscriber> listRecipients = new ArrayList<Subscriber>( );
+        Collection<Subscriber> listRecipients = new ArrayList<>( );
 
         if ( StringUtils.isNotEmpty( strRecipients ) )
         {
-            String strDelimiter = AppPropertiesService.getProperty( PROPERTY_IMPORT_DELIMITER );
+            String strDelimiter = _strImportDelimiter;
 
-            String [ ] strEmails = strRecipients.split( strDelimiter );
-
-            for ( int j = 0; j < strEmails.length; j++ )
+            for ( String strEmail : strRecipients.split( strDelimiter ) )
             {
-                if ( StringUtil.checkEmail( strEmails [j] ) )
+                if ( StringUtil.checkEmail( strEmail ) )
                 {
                     Subscriber subscriber = new Subscriber( );
-                    subscriber.setEmail( strEmails [j] );
+                    subscriber.setEmail( strEmail );
                     listRecipients.add( subscriber );
                 }
             }
@@ -2685,13 +2655,13 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
 
     /**
      * Get the content of a CSS file
-     * 
+     *
      * @return The content into a String
      */
     private String getCssContent( )
     {
         StringBuilder sbContent = new StringBuilder( StringUtils.EMPTY );
-        String strListCssFileName = AppPropertiesService.getProperty( PROPERTY_CSS_FILES );
+        String strListCssFileName = _newsletterService.getCssFiles( );
         String strWebappPath = AppPathService.getWebAppPath( ) + NewsLetterConstants.CONSTANT_SLASH;
         if ( StringUtils.isNotEmpty( strListCssFileName ) )
         {
@@ -2707,31 +2677,24 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
 
     /**
      * Get the content of a text file
-     * 
+     *
      * @param strFileName
      *            The full name of the file
      * @return The content
      */
     private String getTextFileContent( String strFileName )
     {
-        BufferedReader fileReader = null;
         StringBuilder sbSource = new StringBuilder( StringUtils.EMPTY );
 
-        try
+        try ( BufferedReader fileReader = new BufferedReader( new FileReader( strFileName ) ) )
         {
-            fileReader = new BufferedReader( new FileReader( strFileName ) );
-
-            String line;
-
-            line = fileReader.readLine( );
+            String line = fileReader.readLine( );
 
             while ( line != null )
             {
-                sbSource.append( line + SEPARATOR_CSS_FILES_CONTENT );
+                sbSource.append( line ).append( SEPARATOR_CSS_FILES_CONTENT );
                 line = fileReader.readLine( );
             }
-
-            fileReader.close( );
         }
         catch( FileNotFoundException e )
         {
@@ -2741,17 +2704,13 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
         {
             AppLogService.error( "plugin-newsletter - error when reading CSS '{}' ! {}", strFileName, e.getMessage( ), e );
         }
-        finally
-        {
-            IOUtils.closeQuietly( fileReader );
-        }
 
         return sbSource.toString( );
     }
 
     /**
      * Generate the final html code for email
-     * 
+     *
      * @param newsletter
      *            The newsletter to generate
      * @param strBaseUrl
@@ -2762,9 +2721,9 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
      */
     private HtmlTemplate setHtmlTemplateEmail( NewsLetter newsletter, String strBaseUrl, String strUnsubscribe )
     {
-        Map<String, Object> sendingModel = new HashMap<String, Object>( );
+        Map<String, Object> sendingModel = new HashMap<>( );
         sendingModel.put( MARK_CSS, getCssContent( ) );
-        sendingModel.put( MARK_UNSUBSCRIBE, Boolean.parseBoolean( strUnsubscribe));
+        sendingModel.put( MARK_UNSUBSCRIBE, Boolean.parseBoolean( strUnsubscribe ) );
         sendingModel.put( MARK_NEWSLETTER_ID, newsletter.getId( ) );
         sendingModel.put( MARK_NEWSLETTER_CONTENT, HtmlMarkup.of( newsletter.getHtml( ) ) );
         sendingModel.put( NewsLetterConstants.MARK_BASE_URL, strBaseUrl );
@@ -2772,63 +2731,20 @@ public class NewsletterJspBean extends PluginAdminPageJspBean
         sendingModel.put( NewsLetterConstants.MARK_UNSUBSCRIBE_KEY, NewsLetterConstants.MARK_UNSUBSCRIBE_KEY_EACH );
 
         HtmlTemplate templateNewsLetter = AppTemplateService.getTemplate( TEMPLATE_SEND_NEWSLETTER, getLocale( ), sendingModel );
-
         templateNewsLetter.substitute( NewsLetterConstants.WEBAPP_PATH_FOR_LINKSERVICE, strBaseUrl );
 
         return templateNewsLetter;
     }
 
     /**
-     * Processes the copy of a newsletter
-     * 
-     * @param request
-     *            The Http request
-     * @return the jsp URL to display the form to manage newsletters
-     */
-    public String doCopyNewsLetter( HttpServletRequest request )
-    {
-        AdminUser user = AdminUserService.getAdminUser( request );
-        Locale locale = AdminUserService.getLocale( request );
-        int nNewsletterId = Integer.parseInt( request.getParameter( PARAMETER_NEWSLETTER_ID ) );
-
-        NewsLetter newsletter = NewsLetterHome.findByPrimaryKey( nNewsletterId, getPlugin( ) );
-
-        if ( !AdminWorkgroupService.isAuthorized( newsletter, (User) user ) || !RBACService.isAuthorized( NewsLetter.RESOURCE_TYPE,
-                Integer.toString( newsletter.getId( ) ), NewsletterResourceIdService.PERMISSION_CREATE, (User) user ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        Object [ ] tabNewsLetterTileCopy = {
-                newsletter.getName( )
-        };
-        String strTitleCopySuggest = I18nService.getLocalizedString( LABLE_COPY_NEWSLETTER_TITLE, tabNewsLetterTileCopy, getLocale( ) );
-
-        if ( strTitleCopySuggest != null )
-        {
-            // The name of the copy must fit in the column of the name
-            newsletter.setName( StringUtils.left( strTitleCopySuggest, NEWSLETTER_NAME_MAX_LENGTH ) );
-        }
-
-        // Copy of newsletter
-        getNewsletterService().copyExistingNewsletter( newsletter, user, locale );
-        return getHomeUrl( request );
-    }
-
-    /**
-     * Tells if a table manager was built for a URL: the table manager adds its own id to the sort URL it is given
+     * Marks the HTML built by the application as markup for the template (auto-escaping)
      *
-     * @param tableManager
-     *            the table manager
-     * @param strUrl
-     *            the URL
-     * @return true if the sort URL of the table manager is the URL with the id of the table manager
+     * @param strHtml
+     *            The HTML, may be null
+     * @return The markup, or null if there is no HTML
      */
-    static boolean isTableManagerOfUrl( DataTableManager<?> tableManager, String strUrl )
+    private static Object toMarkup( String strHtml )
     {
-        UrlItem urlOfTableManager = new UrlItem( strUrl );
-        urlOfTableManager.addParameter( tableManager.getId( ), tableManager.getId( ) );
-
-        return Objects.equals( tableManager.getSortUrl( ), urlOfTableManager.getUrl( ) );
+        return ( strHtml == null ) ? null : HtmlMarkup.of( strHtml );
     }
 }

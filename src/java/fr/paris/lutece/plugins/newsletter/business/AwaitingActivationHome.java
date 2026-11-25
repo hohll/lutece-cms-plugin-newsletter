@@ -97,4 +97,17 @@ public final class AwaitingActivationHome
     {
         return _dao.exists( nIdUser, nKey, plugin );
     }
+
+    /**
+     * Removes all the keys of a user
+     *
+     * @param nIdUser
+     *            the user id
+     * @param plugin
+     *            the plugin
+     */
+    public static void removeByUser( int nIdUser, Plugin plugin )
+    {
+        _dao.deleteByUser( nIdUser, plugin );
+    }
 }

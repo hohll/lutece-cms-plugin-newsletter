@@ -37,6 +37,7 @@ import fr.paris.lutece.portal.business.portlet.IPortletInterfaceDAO;
 import fr.paris.lutece.portal.business.portlet.PortletHome;
 import fr.paris.lutece.portal.business.portlet.PortletTypeHome;
 import fr.paris.lutece.portal.service.plugin.Plugin;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.spi.CDI;
 
 import java.util.ArrayList;
@@ -44,11 +45,9 @@ import java.util.ArrayList;
 /**
  * This class provides instances management methods for NewsLetterArchivePortlet objects
  */
+@ApplicationScoped
 public class NewsLetterArchivePortletHome extends PortletHome
 {
-    // This class implements the Singleton design pattern.
-    private static NewsLetterArchivePortletHome _singleton = new NewsLetterArchivePortletHome( );
-
     // Static variable pointed at the DAO instance
     private static INewsLetterArchivePortletDAO _dao = CDI.current( ).select( INewsLetterArchivePortletDAO.class ).get( );
 
@@ -57,10 +56,7 @@ public class NewsLetterArchivePortletHome extends PortletHome
      */
     public NewsLetterArchivePortletHome( )
     {
-        if ( _singleton == null )
-        {
-            _singleton = this;
-        }
+        super( );
     }
 
     /**
@@ -81,9 +77,10 @@ public class NewsLetterArchivePortletHome extends PortletHome
      * 
      * @return the Archive Portlet instance
      */
+    @Deprecated( since = "8.0", forRemoval = true )
     public static PortletHome getInstance( )
     {
-        return _singleton;
+        return CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( );
     }
 
     /**

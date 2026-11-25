@@ -1,24 +1,90 @@
+<#assign recipients=newsletter_count_active_subscribers!0>
+<#assign templateLabel = ( newsletter_template_description!'' ) />
+<#assign currentStepParams = { "aria-current": "step" } />
+<#assign previewDesktopParams = { "data-preview-width": "100%", "aria-pressed": "true" } />
+<#assign previewMobileParams = { "data-preview-width": "390px", "aria-pressed": "false" } />
 <@pageContainer>
 	<@pageColumn>
-		<@pageHeader title='#i18n{newsletter.prepare_newsletter.boxTitle}'>
-			<@tform type='inline' method='post' action='jsp/admin/plugins/newsletter/ComposeNewsLetter.jsp?newsletter_id=${newsletter.id}'>
-				<@button type='submit' buttonIcon='keyboard' title='#i18n{newsletter.prepare_newsletter.composeNewsletter}' hideTitle=['xs','sm'] />
-			</@tform>
+		<@pageHeader title='#i18n{newsletter.prepare_newsletter.boxTitle}' description='${newsletter.name}'>
+			<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=composeNewsLetter&newsletter_id=${newsletter.id?c}' buttonIcon='arrow-left' title='#i18n{newsletter.prepare_newsletter.composeNewsletter}' color='light' hideTitle=['xs','sm'] />
 		</@pageHeader>
-		<@messages errors=errors />
-		<@tform method='post' action='jsp/admin/plugins/newsletter/ConfirmSendNewsLetter.jsp' boxed=true>
-			<@input type='hidden' name='newsletter_id' value='${newsletter.id}' />
-			<@formGroup labelFor='newsletter_object' labelKey='#i18n{newsletter.prepare_newsletter.newsletterSubject}'>
-				<@inputGroup>
-					<@input type='text' value='${newsletter_object}' id='newsletter_object' name='newsletter_object' />
-					<@inputGroupItem type='btn'>
-						<@button type='submit' buttonIcon='mail' title='#i18n{newsletter.prepare_newsletter.sendButton}' color='primary' />
-					</@inputGroupItem>
-				</@inputGroup>
-			</@formGroup>
-			<@formGroup labelKey='#i18n{newsletter.prepare_newsletter.newsletterBody}'>
-				<iframe name="preview" id="newsletter_body" title="#i18n{newsletter.prepare_newsletter.newsletterBody}" src="jsp/admin/plugins/newsletter/PreviewNewsLetter.jsp?newsletter_id=${newsletter.id}&plugin_name=newsletter" style="min-height:600px; width:100%; border:0;" scrolling="auto"></iframe>
-			</@formGroup>
-		</@tform>
+		<@ul class='steps steps-counter steps-blue mb-4'>
+			<@li class='step-item'><@link href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=composeNewsLetter&newsletter_id=${newsletter.id?c}'>#i18n{newsletter.prepare_newsletter.stepCompose}</@link></@li>
+			<@li class='step-item active' params=currentStepParams>#i18n{newsletter.prepare_newsletter.stepCheck}</@li>
+			<@li class='step-item'>#i18n{newsletter.prepare_newsletter.stepConfirm}</@li>
+			<@li class='step-item'>#i18n{newsletter.prepare_newsletter.stepSend}</@li>
+		</@ul>
+		<@messages errors=errors![] />
+		<@row>
+			<@columns lg=4>
+				<@tform id='form-prepare-sending' method='post' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' boxed=true>
+					<@input type='hidden' name='view' value='confirmSendNewsLetter' />
+					<@input type='hidden' name='newsletter_id' value='${newsletter.id?c}' />
+					<@formGroup labelFor='newsletter_object' labelKey='#i18n{newsletter.prepare_newsletter.newsletterSubject}' mandatory=true rows=2>
+						<@input type='text' value='${newsletter_object}' id='newsletter_object' name='newsletter_object' maxlength=200 mandatory=true />
+					</@formGroup>
+				</@tform>
+				<@box>
+					<@boxHeader title='#i18n{newsletter.prepare_newsletter.summaryTitle}' />
+					<@boxBody>
+						<@listGroup class='list-group-flush'>
+							<@listGroupItem class='px-0'>
+								<@p class='small text-secondary mb-0'>#i18n{newsletter.prepare_newsletter.labelRecipients}</@p>
+								<@p class='fw-bold mb-0'>${recipients} #i18n{newsletter.prepare_newsletter.labelConfirmedSubscribers}</@p>
+							</@listGroupItem>
+							<@listGroupItem class='px-0'>
+								<@p class='small text-secondary mb-0'>#i18n{newsletter.modify_newsletter.legendSender}</@p>
+								<@p class='mb-0'>${newsletter.newsletterSenderName!} &lt;${newsletter.newsletterSenderMail!}&gt;</@p>
+							</@listGroupItem>
+							<#if (newsletter_template_description!'')?has_content>
+								<@listGroupItem class='px-0'>
+									<@p class='small text-secondary mb-0'>#i18n{newsletter.compose_newsletter.newsletterTemplate}</@p>
+									<@p class='mb-0'>${templateLabel}</@p>
+								</@listGroupItem>
+							</#if>
+							<@listGroupItem class='px-0'>
+								<@p class='small text-secondary mb-0'>#i18n{newsletter.modify_newsletter.dateLastSend}</@p>
+								<@p class='mb-0'>${newsletter.dateLastSending?date}</@p>
+							</@listGroupItem>
+						</@listGroup>
+					</@boxBody>
+				</@box>
+				<#if recipients == 0>
+					<@alert color='warning' iconTitle='alert-triangle' title='#i18n{newsletter.message.noSubscriber}' />
+				</#if>
+				<@div class='d-grid gap-2 mb-3'>
+					<@button type='submit' formId='form-prepare-sending' buttonIcon='send' title='#i18n{newsletter.prepare_newsletter.sendButton} (${recipients})' color='primary' size='lg' disabled=(recipients == 0) />
+				</@div>
+			</@columns>
+			<@columns lg=8>
+				<@box>
+					<@boxHeader title='#i18n{newsletter.prepare_newsletter.previewTitle}'>
+						<@btnGroup size='sm' ariaLabel='#i18n{newsletter.prepare_newsletter.previewTitle}'>
+							<@button type='button' id='preview_desktop' title='#i18n{newsletter.prepare_newsletter.previewDesktop}' buttonIcon='device-desktop' color='light' class='active' params=previewDesktopParams />
+							<@button type='button' id='preview_mobile' title='#i18n{newsletter.prepare_newsletter.previewMobile}' buttonIcon='device-mobile' color='light' params=previewMobileParams />
+						</@btnGroup>
+					</@boxHeader>
+					<@boxBody class='bg-body-tertiary d-flex justify-content-center'>
+						<#assign previewSrcdoc = ( newsletter_preview_html?? && newsletter_preview_html?is_markup_output )?then( newsletter_preview_html?markup_string, ( newsletter_preview_html!'' )?string ) />
+						<iframe name="preview" id="newsletter_body" title="#i18n{newsletter.prepare_newsletter.newsletterBody}" srcdoc="${previewSrcdoc}" class="border-0 bg-white" style="width:100%; max-width:100%; min-height:600px;"></iframe>
+					</@boxBody>
+				</@box>
+			</@columns>
+		</@row>
 	</@pageColumn>
 </@pageContainer>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+	const frame = document.getElementById('newsletter_body');
+	const buttons = document.querySelectorAll('[data-preview-width]');
+	buttons.forEach(function(button) {
+		button.addEventListener('click', function() {
+			frame.style.width = button.dataset.previewWidth;
+			buttons.forEach(function(other) {
+				other.classList.toggle('active', other === button);
+				other.setAttribute('aria-pressed', other === button ? 'true' : 'false');
+			});
+		});
+	});
+});
+</script>

@@ -1,0 +1,202 @@
+<#include "/admin/plugins/newsletter/subscriber/newsletter_choice.html" />
+<#assign subscribers_url = 'jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp' />
+<#assign openFiltersModalParams = { "data-bs-toggle": "modal", "data-bs-target": "#subscribers-filters" } />
+<#assign dismissModalParams = { "data-bs-dismiss": "modal" } />
+<#assign openCreateModalParams = { "data-bs-toggle": "modal", "data-bs-target": "#subscriber-create" } />
+<#assign create_allowed = permission_create && newsletters_list?size gt 1 />
+<#assign validate_allowed = permission_validate && subscription_state == 'pending' />
+<#assign bulk_allowed = permission_modify_status || validate_allowed />
+<#assign active_filters = [] />
+<#list [ [newsletters_list, newsletter_id], [status_list, subscriber_status], [subscription_state_list, subscription_state] ] as filter_choice>
+	<#if filter_choice[1]?has_content>
+		<#list filter_choice[0] as choice_item>
+			<#if choice_item.code == filter_choice[1]><#assign active_filters = active_filters + [ choice_item.name ] /></#if>
+		</#list>
+	</#if>
+</#list>
+<@pageContainer>
+	<@pageColumn>
+		<#assign pageTitle><span class="avatar avatar-sm bg-blue-lt me-2"><@icon style='users' /></span>#i18n{newsletter.manage_subscribers_global.pageTitle}</#assign>
+		<@pageHeader title=pageTitle>
+			<@tform type='inline' method='get' action=subscribers_url class='me-1'>
+				<@input type='hidden' name='view' value='manageSubscribers' />
+				<@input type='hidden' name='newsletter_id' value='${newsletter_id}' />
+				<@input type='hidden' name='subscriber_status' value='${subscriber_status}' />
+				<@input type='hidden' name='subscription_state' value='${subscription_state}' />
+				<@formGroup labelFor='search_email_inline' labelKey='#i18n{newsletter.manage_subscribers_global.filterEmail}' hideLabel=['all'] formStyle='inline'>
+					<@inputGroup>
+						<@input type='text' name='search_email' id='search_email_inline' value='${search_email}' placeHolder='#i18n{newsletter.manage_subscribers.columnTitleEmail}' params={'autocomplete': 'off'} />
+						<@button type='submit' color='primary' title='#i18n{newsletter.manage_subscribers.buttonSearch}' buttonIcon='search' hideTitle=['all'] />
+						<@button type='button' color='light' title='#i18n{newsletter.manage_subscribers_global.buttonFilters}${active_filters?has_content?then(" (" + active_filters?size + ")", "")}' buttonIcon='filter' hideTitle=['all'] params=openFiltersModalParams />
+					</@inputGroup>
+				</@formGroup>
+			</@tform>
+			<#if filter_active>
+				<@aButton href=subscribers_url title='#i18n{portal.util.labelReset}' buttonIcon='filter-off' color='light' hideTitle=['xs','sm','md'] class='me-1' />
+			</#if>
+			<#if create_allowed>
+				<@button type='button' buttonIcon='user-plus' title='#i18n{newsletter.manage_subscribers_global.buttonCreate}' color='primary' hideTitle=['xs','sm','md'] class='me-1' params=openCreateModalParams />
+			</#if>
+			<#if clean_subscribers_allowed>
+				<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=confirmCleanSubscribers&return_view=subscribers' buttonIcon='trash' title='#i18n{newsletter.manage_newsletters_properties.buttonRemoveUnconfirmedSubscribers}' hideTitle=filter_active?then(['all'], ['xs','sm','md']) color='danger' />
+			</#if>
+		</@pageHeader>
+		<@modal id='subscribers-filters'>
+			<@modalHeader modalTitle='#i18n{newsletter.manage_subscribers_global.buttonFilters}' />
+			<@modalBody>
+				<@tform id='form-subscribers-filters' method='post' action=subscribers_url>
+					<@input type='hidden' name='view' value='manageSubscribers' />
+					<@formGroup labelFor='search_email' labelKey='#i18n{newsletter.manage_subscribers_global.filterEmail}' rows=2>
+						<@input type='text' id='search_email' name='search_email' value='${search_email}' />
+					</@formGroup>
+					<@formGroup labelFor='newsletter_id' labelKey='#i18n{newsletter.manage_subscribers_global.filterNewsletter}' rows=2>
+						<@select id='newsletter_id' name='newsletter_id' items=newsletters_list default_value=newsletter_id />
+					</@formGroup>
+					<@formGroup labelFor='subscriber_status' labelKey='#i18n{newsletter.manage_subscribers_global.filterStatus}' rows=2>
+						<@select id='subscriber_status' name='subscriber_status' items=status_list default_value=subscriber_status />
+					</@formGroup>
+					<@formGroup labelFor='subscription_state' labelKey='#i18n{newsletter.manage_subscribers_global.filterSubscription}' rows=2>
+						<@select id='subscription_state' name='subscription_state' items=subscription_state_list default_value=subscription_state />
+					</@formGroup>
+				</@tform>
+			</@modalBody>
+			<@modalFooter>
+				<@aButton href=subscribers_url buttonIcon='x' title='#i18n{portal.util.labelReset}' color='light' />
+				<@button type='submit' formId='form-subscribers-filters' buttonIcon='check' title='#i18n{newsletter.manage_subscribers_global.buttonApplyFilters}' color='primary' />
+			</@modalFooter>
+		</@modal>
+		<@messages errors=errors![] infos=infos![] warnings=warnings![] />
+		<@row>
+			<@columns sm=6 xl=3>
+				<@smallBox color='primary' boxIcon='users' title='${subscriber_statistics.subscribers}' text='#i18n{newsletter.manage_subscribers_global.pageTitle}' url=subscribers_url />
+			</@columns>
+			<@columns sm=6 xl=3>
+				<@smallBox color='green' boxIcon='player-play' title='${subscriber_statistics.active}' text='#i18n{newsletter.model.entity.subscriber.attribute.status.active}' url='${subscribers_url}?view=manageSubscribers&subscriber_status=active' />
+			</@columns>
+			<@columns sm=6 xl=3>
+				<@smallBox color='red' boxIcon='player-pause' title='${subscriber_statistics.suspended}' text='#i18n{newsletter.model.entity.subscriber.attribute.status.suspended}' url='${subscribers_url}?view=manageSubscribers&subscriber_status=suspended' />
+			</@columns>
+			<@columns sm=6 xl=3>
+				<@smallBox color='orange' boxIcon='hourglass' title='${subscriber_statistics.pending}' text='#i18n{newsletter.manage_subscribers.countPending}' url='${subscribers_url}?view=manageSubscribers&subscription_state=pending' />
+			</@columns>
+		</@row>
+		<#if active_filters?has_content>
+			<@div class='d-flex flex-wrap gap-1 mt-2'>
+				<#list active_filters as active_filter><@tag color='blue-lt' tagIcon='filter'> ${active_filter}</@tag></#list>
+			</@div>
+		</#if>
+		<#if subscribers_list?has_content>
+			<@tform id='subscribers_form' name='subscribers_form' method='post' action=subscribers_url>
+				<@input type='hidden' name='action' value='processSubscribers' />
+				<@input type='hidden' name='search_email' value='${search_email}' />
+				<@input type='hidden' name='newsletter_id' value='${newsletter_id}' />
+				<@input type='hidden' name='subscriber_status' value='${subscriber_status}' />
+				<@input type='hidden' name='subscription_state' value='${subscription_state}' />
+				<#if bulk_allowed>
+					<@div class='d-flex flex-wrap align-items-center gap-2 mt-3'>
+						<@checkBox orientation='switch' id='select_all' name='select_all' value='1' labelKey='#i18n{portal.users.modify_user_rights.buttonLabelSelectAll}' wrapperClass='mb-0 me-auto' />
+						<#if permission_modify_status>
+							<@button type='submit' name='operation' value='suspend' color='warning' size='sm' buttonIcon='player-pause' title='#i18n{newsletter.manage_subscribers_global.buttonSuspend}' class='selection-action' hideTitle=['xs'] disabled=true />
+							<@button type='submit' name='operation' value='activate' color='success' size='sm' buttonIcon='player-play' title='#i18n{newsletter.manage_subscribers_global.buttonActivate}' class='selection-action' hideTitle=['xs'] disabled=true />
+						</#if>
+						<#if validate_allowed>
+							<@button type='submit' name='operation' value='validate' color='primary' size='sm' buttonIcon='check' title='#i18n{newsletter.manage_subscribers_global.buttonValidate}' class='selection-action' hideTitle=['xs'] disabled=true />
+						</#if>
+					</@div>
+				</#if>
+				<@manageFeature layout='list' id='subscribers-list'>
+					<#list subscribers_list as subscriber>
+						<#assign counts = subscription_counts[subscriber.id?c]!>
+						<#assign pendingCount = counts?has_content?then(counts.first - counts.second, 0) />
+						<#assign subscriber_url = subscribers_url + '?view=viewSubscriber&id_subscriber=' + subscriber.id?c />
+						<#assign subscriberStatus><#if subscriber.suspended>#i18n{newsletter.model.entity.subscriber.attribute.status.suspended}<#else>#i18n{newsletter.model.entity.subscriber.attribute.status.active}</#if></#assign><#assign subscriberStatus = subscriberStatus?markup_string />
+						<@manageFeatureItem id='subscriber_${subscriber.id?c}'>
+							<#if bulk_allowed>
+								<@manageFeatureItemColumn auto=true>
+									<@checkBox orientation='switch' id='subscriber_selection_${subscriber.id?c}' name='subscriber_selection' value='${subscriber.id?c}' labelKey='${subscriber.email}' labelClass='visually-hidden' wrapperClass='mb-0' />
+								</@manageFeatureItemColumn>
+							</#if>
+							<@manageFeatureItemColumn class='d-flex align-items-center gap-2 text-truncate'>
+								<span class="status-dot ${subscriber.suspended?then('status-red', (pendingCount gt 0)?then('status-orange', 'status-green'))}" title="${subscriberStatus}"></span><span class="visually-hidden">${subscriberStatus}</span>
+								<div class="text-truncate">
+									<a href="${subscriber_url}" class="text-reset fw-semibold" title="#i18n{newsletter.manage_subscribers_global.buttonModify} ${subscriber.email}">${subscriber.email}</a>
+									<div class="text-secondary small text-truncate">
+										${subscriberStatus}<#if counts?has_content> &middot; #i18n{newsletter.manage_subscribers.statusConfirmed} ${counts.second}<#if pendingCount gt 0> &middot; #i18n{newsletter.manage_subscribers.countPending} ${pendingCount}</#if></#if>
+									</div>
+								</div>
+							</@manageFeatureItemColumn>
+							<@manageFeatureItemColumn auto=true align='end' class='d-flex align-items-center gap-2'>
+								<#if counts?has_content>
+									<span class="badge bg-green-lt" title="#i18n{newsletter.manage_subscribers.statusConfirmed}"><@icon style='check' class='me-1' />${counts.second}<span class="visually-hidden"> #i18n{newsletter.manage_subscribers.statusConfirmed}</span></span>
+								</#if>
+								<#if pendingCount gt 0>
+									<span class="badge bg-orange-lt" title="#i18n{newsletter.manage_subscribers.countPending}"><@icon style='hourglass' class='me-1' />${pendingCount}<span class="visually-hidden"> #i18n{newsletter.manage_subscribers.countPending}</span></span>
+								</#if>
+								<div class="btn-actions">
+									<a href="${subscriber_url}" class="btn-action" title="#i18n{newsletter.manage_subscribers_global.buttonModify}"><@icon style='user-edit' /><span class="visually-hidden">#i18n{newsletter.manage_subscribers_global.buttonModify} ${subscriber.email}</span></a>
+								</div>
+							</@manageFeatureItemColumn>
+						</@manageFeatureItem>
+					</#list>
+				</@manageFeature>
+			</@tform>
+			<#if paginator.pagesCount gt 1 || paginator.itemsCount gt 10><@paginationAdmin paginator=paginator combo=1 showcount=0 /></#if>
+		<#elseif filter_active>
+			<@card>
+				<@empty title='#i18n{newsletter.manage_subscribers_global.noData}' iconName='search-off' subtitle=' ' actionTitle='#i18n{portal.util.labelReset}' actionIcon='filter-off' actionUrl=subscribers_url />
+			</@card>
+		<#else>
+			<@card>
+				<@empty title='#i18n{newsletter.manage_subscribers_global.noData}' iconName='users-minus' subtitle=' ' />
+			</@card>
+		</#if>
+		<#if create_allowed>
+			<@modal id='subscriber-create'>
+				<@modalHeader modalTitle='#i18n{newsletter.manage_subscribers_global.buttonCreate}' />
+				<@modalBody>
+					<@tform id='form-subscriber-create' method='post' action=subscribers_url>
+						<@input type='hidden' name='action' value='processSubscribers' />
+						<@input type='hidden' name='operation' value='create' />
+						<@formGroup labelFor='create_email' labelKey='#i18n{newsletter.manage_subscribers.columnTitleEmail}' mandatory=true rows=2>
+							<@input type='email' id='create_email' name='email' mandatory=true autoComplete='off' />
+						</@formGroup>
+						<@newsletterChoice items=newsletters_list idPrefix='create' />
+						<@formGroup rows=2>
+							<@checkBox orientation='switch' id='create_send_confirmation' name='send_confirmation' value='true' labelKey='#i18n{newsletter.view_subscriber.labelSendConfirmation}' />
+						</@formGroup>
+					</@tform>
+				</@modalBody>
+				<@modalFooter>
+					<@button type='button' buttonIcon='x' title='#i18n{portal.util.labelCancel}' color='light' params=dismissModalParams />
+					<@button type='submit' formId='form-subscriber-create' buttonIcon='user-plus' title='#i18n{newsletter.manage_subscribers_global.buttonCreate}' color='primary' disabled=true />
+				</@modalFooter>
+			</@modal>
+		</#if>
+	</@pageColumn>
+</@pageContainer>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+	const selectAll = document.getElementById('select_all');
+	const actions = document.querySelectorAll('#subscribers_form .selection-action');
+	const checkboxes = document.querySelectorAll('#subscribers-list input[name="subscriber_selection"]');
+
+	function updateActions() {
+		const anyChecked = Array.from(checkboxes).some(cb => cb.checked);
+		actions.forEach(btn => { if (anyChecked) { btn.removeAttribute('disabled'); } else { btn.setAttribute('disabled', ''); } });
+	}
+
+	if (selectAll) {
+		selectAll.addEventListener('change', function() {
+			checkboxes.forEach(cb => { cb.checked = selectAll.checked; });
+			updateActions();
+		});
+	}
+	checkboxes.forEach(cb => cb.addEventListener('change', updateActions));
+});
+</script>
+<#if create_allowed>
+<script type="module">
+import initNewsletterChoice from './themes/admin/shared/plugins/newsletter/js/newsletter-choice.js';
+initNewsletterChoice( document.getElementById( 'form-subscriber-create' ) );
+</script>
+</#if>

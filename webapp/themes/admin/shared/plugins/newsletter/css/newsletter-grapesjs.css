@@ -1,0 +1,10 @@
+/* GrapesJS active colors (pink by default) mapped to the Tabler primary color of the back office */
+:root {
+    --gjs-quaternary-color: var(--tblr-primary);
+    --gjs-tertiary-color: var(--tblr-primary-darken);
+    --gjs-primary-color: var(--tblr-gray-500);
+}
+
+.gjs-pn-btn.gjs-pn-active {
+    background-color: var(--tblr-gray-200);
+}

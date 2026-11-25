@@ -1,0 +1,28 @@
+<style>.newsletter-choice-list{max-height:40vh}</style>
+<#--
+Macro: newsletterChoice
+Description: the choice of several newsletters in a modal form: a filter, a button selecting or unselecting the newsletters shown, and the
+scrollable list of the newsletters. The behaviour comes from the module themes/admin/shared/plugins/newsletter/js/newsletter-choice.js.
+Parameters:
+- items (ReferenceList): the newsletters, by identifier; an item without code is left out.
+- idPrefix (string): the prefix of the ids of the fields, unique in the page.
+-->
+<#macro newsletterChoice items idPrefix>
+<#assign newsletterChoiceListParams = {} />
+<@formGroup labelKey='#i18n{newsletter.manage_subscribers_global.labelCreateNewsletter}' mandatory=true rows=2>
+	<#-- formGroup mandatory=true propagates "required" to the fields it holds: the filter is optional -->
+	<#assign propagateMandatory = false>
+	<@div class='d-flex gap-2 mb-2'>
+		<@input type='search' id='${idPrefix}_newsletter_search' name='${idPrefix}_newsletter_search' size='sm' class='newsletter-choice-search' placeHolder='#i18n{newsletter.manage_subscribers_global.labelFilterNewsletters}' title='#i18n{newsletter.manage_subscribers_global.labelFilterNewsletters}' />
+		<@button type='button' buttonIcon='checks' title='#i18n{newsletter.manage_subscribers_global.buttonSelectAllShown}' color='light' size='sm' class='text-nowrap newsletter-choice-select-all' />
+		<@button type='button' buttonIcon='square-off' title='#i18n{newsletter.manage_subscribers_global.buttonUnselectAllShown}' color='light' size='sm' class='text-nowrap d-none newsletter-choice-unselect-all' />
+	</@div>
+	<@div class='overflow-auto border rounded p-2 newsletter-choice-list' params=newsletterChoiceListParams>
+		<#list items as newsletter_item>
+			<#if newsletter_item.code?has_content>
+				<@checkBox orientation='switch' id='${idPrefix}_newsletter_${newsletter_item.code}' name='newsletter_ids' value='${newsletter_item.code}' labelKey='${newsletter_item.name}' wrapperClass='newsletter-choice-item' />
+			</#if>
+		</#list>
+	</@div>
+</@formGroup>
+</#macro>

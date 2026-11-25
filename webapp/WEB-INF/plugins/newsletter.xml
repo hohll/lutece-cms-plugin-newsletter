@@ -2,7 +2,7 @@
     
     <!-- Plugin Informations -->
     <name>newsletter</name>
-    <class>fr.paris.lutece.plugins.newsletter.service.NewsletterPlugin</class>
+    <class>fr.paris.lutece.portal.service.plugin.PluginDefaultImplementation</class>
     <version>5.1.0-SNAPSHOT</version>
     <description>newsletter.plugin.description</description>
     <documentation/>
@@ -33,6 +33,7 @@
             <feature-description>newsletter.adminFeature.newsletter_management.description</feature-description>
             <feature-level>2</feature-level>
             <feature-url>jsp/admin/plugins/newsletter/ManageNewsLetter.jsp</feature-url>
+            <feature-group>CONTENT</feature-group>
         </admin-feature>
         <admin-feature>
             <feature-id>NEWSLETTER_TEMPLATE_MANAGEMENT</feature-id>
@@ -40,8 +41,27 @@
             <feature-description>newsletter.adminFeature.newsletter_template_management.description</feature-description>
             <feature-level>2</feature-level>
             <feature-url>jsp/admin/plugins/newsletter/ManageTemplates.jsp</feature-url>
+            <feature-group>STYLE</feature-group>
+        </admin-feature>
+        <admin-feature>
+            <feature-id>NEWSLETTER_SUBSCRIBER_MANAGEMENT</feature-id>
+            <feature-title>newsletter.adminFeature.newsletter_subscriber_management.name</feature-title>
+            <feature-description>newsletter.adminFeature.newsletter_subscriber_management.description</feature-description>
+            <feature-level>2</feature-level>
+            <feature-url>jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp</feature-url>
+            <icon-url>ti ti-users</icon-url>
+            <feature-group>USERS</feature-group>
         </admin-feature>
     </admin-features>
+
+    <!-- Dashboard components -->
+    <dashboard-components>
+        <dashboard-component>
+            <dashboard-component-name>NEWSLETTER_PENDING_SUBSCRIPTIONS</dashboard-component-name>
+            <dashboard-component-class>fr.paris.lutece.plugins.newsletter.web.dashboard.PendingSubscriptionsDashboardComponent</dashboard-component-class>
+            <dashboard-feature-right>NEWSLETTER_SUBSCRIBER_MANAGEMENT</dashboard-feature-right>
+        </dashboard-component>
+    </dashboard-components>
     
     <!-- Portlet parameters -->
     <portlets>
@@ -89,6 +109,11 @@
 		<rbac-resource-type>
 			<rbac-resource-type-class>
 				fr.paris.lutece.plugins.newsletter.service.NewsletterTemplateResourceIdService
+			</rbac-resource-type-class>
+		</rbac-resource-type>
+		<rbac-resource-type>
+			<rbac-resource-type-class>
+				fr.paris.lutece.plugins.newsletter.service.SubscriberResourceIdService
 			</rbac-resource-type-class>
 		</rbac-resource-type>
 	</rbac-resource-types>

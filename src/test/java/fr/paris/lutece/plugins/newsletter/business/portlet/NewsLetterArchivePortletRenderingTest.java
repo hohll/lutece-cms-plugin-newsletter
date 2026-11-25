@@ -33,6 +33,7 @@
  */
 package fr.paris.lutece.plugins.newsletter.business.portlet;
 
+import jakarta.enterprise.inject.spi.CDI;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -98,7 +99,7 @@ public class NewsLetterArchivePortletRenderingTest extends LuteceTestCase
         _portlet.setStatus( Portlet.STATUS_PUBLISHED );
         _portlet.setDisplayPortletTitle( 0 );
         _portlet.setDeviceDisplayFlags( Portlet.FLAG_DISPLAY_ON_NORMAL_DEVICE | Portlet.FLAG_DISPLAY_ON_LARGE_DEVICE | Portlet.FLAG_DISPLAY_ON_XLARGE_DEVICE );
-        NewsLetterArchivePortletHome.getInstance( ).create( _portlet );
+        CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).create( _portlet );
         NewsLetterArchivePortletHome.insertSending( _portlet.getId( ), _sending.getId( ), _plugin );
     }
 
@@ -108,7 +109,7 @@ public class NewsLetterArchivePortletRenderingTest extends LuteceTestCase
     {
         if ( _portlet != null )
         {
-            NewsLetterArchivePortletHome.getInstance( ).remove( _portlet );
+            CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).remove( _portlet );
         }
         if ( _sending != null )
         {
@@ -124,7 +125,7 @@ public class NewsLetterArchivePortletRenderingTest extends LuteceTestCase
     @Test
     public void testShippedTemplateRegistered( )
     {
-        List<PortletTemplate> listTemplates = PortletTemplateHome.findByPortletType( NewsLetterArchivePortletHome.getInstance( ).getPortletTypeId( ) );
+        List<PortletTemplate> listTemplates = PortletTemplateHome.findByPortletType( CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).getPortletTypeId( ) );
         assertEquals( 1, listTemplates.size( ), "the shipped template should be registered in the core for the archive portlet type" );
     }
 
@@ -134,7 +135,7 @@ public class NewsLetterArchivePortletRenderingTest extends LuteceTestCase
     @Test
     public void testTemplateStoredWithThePortlet( )
     {
-        PortletTemplate template = PortletTemplateHome.findByPortletType( NewsLetterArchivePortletHome.getInstance( ).getPortletTypeId( ) ).get( 0 );
+        PortletTemplate template = PortletTemplateHome.findByPortletType( CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).getPortletTypeId( ) ).get( 0 );
         _portlet.setIdTemplate( template.getId( ) );
         _portlet.update( );
 
@@ -151,7 +152,7 @@ public class NewsLetterArchivePortletRenderingTest extends LuteceTestCase
         MockHttpServletRequest request = new MockHttpServletRequest( );
         LocalVariables.setLocal( null, request, new MockHttpServletResponse( ) );
 
-        for ( PortletTemplate template : PortletTemplateHome.findByPortletType( NewsLetterArchivePortletHome.getInstance( ).getPortletTypeId( ) ) )
+        for ( PortletTemplate template : PortletTemplateHome.findByPortletType( CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).getPortletTypeId( ) ) )
         {
             _portlet.setIdTemplate( template.getId( ) );
             String strContent = _portlet.getHtmlContent( request );

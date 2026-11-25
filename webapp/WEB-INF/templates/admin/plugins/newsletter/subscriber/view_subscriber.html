@@ -1,0 +1,198 @@
+<#include "/admin/plugins/newsletter/subscriber/newsletter_choice.html" />
+<#assign openSubscribeModalParams = { "data-bs-toggle": "modal", "data-bs-target": "#subscription-create" } />
+<#assign dismissModalParams = { "data-bs-dismiss": "modal" } />
+<#assign subscribe_allowed = permission_subscribe && available_newsletters?has_content />
+<#assign pending_count = subscriptions_list?filter( subscription -> !subscription.confirmed )?size />
+<#assign confirmed_count = subscriptions_list?size - pending_count />
+<#assign status_description = subscriber.dateStatusUpdate???then( '#i18n{newsletter.view_subscriber.labelStatusUpdate} ${subscriber.dateStatusUpdate}', '' ) />
+<#macro subscriberOperation operation title buttonIcon color>
+<@tform type='inline' method='post' action='jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp'>
+	<@input type='hidden' name='action' value='processSubscribers' />
+	<@input type='hidden' name='operation' value='${operation}' />
+	<@input type='hidden' name='id_subscriber' value='${subscriber.id?c}' />
+	<@input type='hidden' name='return_view' value='viewSubscriber' />
+	<@button type='submit' buttonIcon=buttonIcon title=title color=color class='ms-1' hideTitle=['xs','sm'] />
+</@tform>
+</#macro>
+<@pageContainer>
+	<@pageColumn>
+		<@pageHeader title='${subscriber.email}' description=status_description>
+			<@aButton href='jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp' title='#i18n{portal.util.labelBack}' buttonIcon='arrow-left' color='light' hideTitle=['xs','sm'] />
+			<#if has_pending && permission_validate>
+				<@subscriberOperation operation='resendConfirmation' title='#i18n{newsletter.view_subscriber.buttonResendConfirmation}' buttonIcon='mail-forward' color='light' />
+			</#if>
+			<#if status_change_allowed && permission_modify_status>
+				<#if subscriber.suspended>
+					<@subscriberOperation operation='activate' title='#i18n{newsletter.manage_subscribers_global.buttonActivate}' buttonIcon='player-play' color='success' />
+				<#else>
+					<@subscriberOperation operation='suspend' title='#i18n{newsletter.manage_subscribers_global.buttonSuspend}' buttonIcon='player-pause' color='warning' />
+				</#if>
+			</#if>
+			<#if subscribe_allowed>
+				<@button type='button' title='#i18n{newsletter.view_subscriber.buttonSubscribe}' buttonIcon='plus' color='primary' class='ms-1' hideTitle=['xs','sm'] params=openSubscribeModalParams />
+			</#if>
+		</@pageHeader>
+		<@messages errors=errors![] infos=infos![] warnings=warnings![] />
+		<#if !status_change_allowed && permission_modify_status>
+			<@alert color='info' iconTitle='info-circle' title='#i18n{newsletter.view_subscriber.statusChangeNotAllowed}' />
+		</#if>
+		<@row class='row-cards mb-3'>
+			<@columns sm=6 lg=3>
+				<#if subscriber.suspended>
+					<@smallBox text='#i18n{newsletter.manage_subscribers.columnTitleStatus}' title='#i18n{newsletter.model.entity.subscriber.attribute.status.suspended}' boxIcon='player-pause' color='red' />
+				<#else>
+					<@smallBox text='#i18n{newsletter.manage_subscribers.columnTitleStatus}' title='#i18n{newsletter.model.entity.subscriber.attribute.status.active}' boxIcon='player-play' color='green' />
+				</#if>
+			</@columns>
+			<@columns sm=6 lg=3>
+				<@smallBox text='#i18n{newsletter.view_subscriber.labelSubscriptions}' title='${subscriptions_list?size}' boxIcon='mail' color='blue' />
+			</@columns>
+			<@columns sm=6 lg=3>
+				<@smallBox text='#i18n{newsletter.manage_subscribers.statusConfirmed}' title='${confirmed_count}' boxIcon='circle-check' color='green' />
+			</@columns>
+			<@columns sm=6 lg=3>
+				<@smallBox text='#i18n{newsletter.manage_subscribers.countPending}' title='${pending_count}' boxIcon='hourglass' color='orange' />
+			</@columns>
+		</@row>
+		<@h level=3 class='mb-2'>#i18n{newsletter.view_subscriber.labelSubscriptions}</@h>
+		<#if subscriptions_list?has_content>
+			<#if permission_validate>
+			<@tform type='inline' id='form-validate-subscription' method='post' action='jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp'>
+				<@input type='hidden' name='action' value='processSubscribers' />
+				<@input type='hidden' name='operation' value='validate' />
+				<@input type='hidden' name='id_subscriber' value='${subscriber.id?c}' />
+				<@input type='hidden' name='return_view' value='viewSubscriber' />
+			</@tform>
+			</#if>
+			<@row class='align-items-center g-2'>
+				<@columns>
+					<@input type='search' id='subscriptions_search' name='subscriptions_search' placeHolder='#i18n{newsletter.view_subscriber.labelFilterSubscriptions}' title='#i18n{newsletter.view_subscriber.labelFilterSubscriptions}' />
+				</@columns>
+				<#if permission_unsubscribe>
+				<@columns class='col-auto'>
+					<@checkBox orientation='switch' id='subscriptions_select_all' name='subscriptions_select_all' value='1' labelKey='#i18n{portal.users.modify_user_rights.buttonLabelSelectAll}' wrapperClass='mb-0' />
+				</@columns>
+				<@columns class='col-auto'>
+					<@tform type='inline' id='form-unsubscribe-selected' method='post' action='jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp'>
+						<@input type='hidden' name='view' value='confirmUnsubscribe' />
+						<@input type='hidden' name='id_subscriber' value='${subscriber.id?c}' />
+						<@button type='submit' id='unsubscribe_selected' buttonIcon='user-minus' title='#i18n{newsletter.view_subscriber.buttonUnsubscribeSelected}' color='danger' hideTitle=['xs','sm'] disabled=true />
+					</@tform>
+				</@columns>
+				</#if>
+			</@row>
+			<@manageFeature id='subscriptions-list'>
+				<#list subscriptions_list as subscription>
+					<@manageFeatureItem liClass='subscription-item'>
+						<#if permission_unsubscribe>
+						<@manageFeatureItemColumn auto=true>
+							<@checkBox orientation='switch' id='subscription_selection_${subscription.idNewsletter?c}' name='subscription_selection' value='${subscription.idNewsletter?c}' labelKey='${subscription.newsletterName!}' labelClass='visually-hidden' wrapperClass='mb-0' />
+						</@manageFeatureItemColumn>
+						</#if>
+						<@manageFeatureItemColumn auto=true flex=false class='flex-grow-1'>
+							<@p class='fw-bold mb-0 searchable'>${subscription.newsletterName!}</@p>
+							<@p class='text-secondary small mb-0'>#i18n{newsletter.manage_subscribers.columnTitleSubscriptionDate} <@span class='searchable'>${subscription.dateSubscription}</@span></@p>
+						</@manageFeatureItemColumn>
+						<@manageFeatureItemColumn auto=true class='searchable'>
+							<#if subscription.confirmed>
+								<@tag color='green-lt' tagIcon='check'> #i18n{newsletter.manage_subscribers.statusConfirmed}</@tag>
+							<#else>
+								<@tag color='orange-lt' tagIcon='hourglass'> #i18n{newsletter.manage_subscribers.countPending}</@tag>
+							</#if>
+						</@manageFeatureItemColumn>
+						<@manageFeatureItemColumn auto=true align='end'>
+							<#if !subscription.confirmed && permission_validate>
+								<@button type='submit' formId='form-validate-subscription' name='newsletter_id' value='${subscription.idNewsletter?c}' title='#i18n{newsletter.manage_subscribers_global.buttonValidate}' buttonIcon='check' color='primary' class='me-1' hideTitle=['all'] />
+							</#if>
+							<#if permission_unsubscribe>
+							<@aButton href='jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp?view=confirmUnsubscribe&id_subscriber=${subscriber.id?c}&newsletter_id=${subscription.idNewsletter?c}' title='#i18n{newsletter.view_subscriber.buttonUnsubscribe}' buttonIcon='user-minus' color='danger' hideTitle=['all'] />
+							</#if>
+						</@manageFeatureItemColumn>
+					</@manageFeatureItem>
+				</#list>
+			</@manageFeature>
+		<#else>
+			<@card>
+				<@empty title='#i18n{newsletter.view_subscriber.noSubscription}' iconName='mail-off' subtitle=' ' />
+			</@card>
+		</#if>
+		<#if subscribe_allowed>
+			<@modal id='subscription-create'>
+				<@modalHeader modalTitle='#i18n{newsletter.view_subscriber.buttonSubscribe}' />
+				<@modalBody>
+					<@tform id='form-subscription-create' method='post' action='jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp'>
+						<@input type='hidden' name='action' value='processSubscribers' />
+						<@input type='hidden' name='operation' value='subscribe' />
+						<@input type='hidden' name='id_subscriber' value='${subscriber.id?c}' />
+						<@input type='hidden' name='return_view' value='viewSubscriber' />
+						<@newsletterChoice items=available_newsletters idPrefix='subscribe' />
+						<@formGroup rows=2>
+							<@checkBox orientation='switch' id='subscribe_send_confirmation' name='send_confirmation' value='true' labelKey='#i18n{newsletter.view_subscriber.labelSendConfirmation}' />
+						</@formGroup>
+					</@tform>
+				</@modalBody>
+				<@modalFooter>
+					<@button type='button' buttonIcon='x' title='#i18n{portal.util.labelCancel}' color='light' params=dismissModalParams />
+					<@button type='submit' formId='form-subscription-create' buttonIcon='plus' title='#i18n{newsletter.view_subscriber.buttonSubscribe}' color='primary' disabled=true />
+				</@modalFooter>
+			</@modal>
+		</#if>
+	</@pageColumn>
+</@pageContainer>
+<#if subscribe_allowed>
+<script type="module">
+import initNewsletterChoice from './themes/admin/shared/plugins/newsletter/js/newsletter-choice.js';
+initNewsletterChoice( document.getElementById( 'form-subscription-create' ) );
+</script>
+</#if>
+<#if subscriptions_list?has_content>
+<#if permission_unsubscribe>
+<script type="module">
+import LuteceSearchList from './themes/shared/modules/luteceSearchList.js';
+
+const items = document.querySelectorAll( '#subscriptions-list .subscription-item' );
+const selectAll = document.getElementById( 'subscriptions_select_all' );
+const unsubscribeForm = document.getElementById( 'form-unsubscribe-selected' );
+const unsubscribeButton = document.getElementById( 'unsubscribe_selected' );
+const checkboxOf = item => item.querySelector( 'input[name="subscription_selection"]' );
+const visibleItems = () => Array.from( items ).filter( item => !item.classList.contains( 'd-none' ) );
+const selectedCheckboxes = () => visibleItems().map( checkboxOf ).filter( cb => cb.checked );
+
+const update = () => {
+	const visible = visibleItems();
+	selectAll.checked = visible.length > 0 && visible.every( item => checkboxOf( item ).checked );
+	unsubscribeButton.disabled = selectedCheckboxes().length === 0;
+};
+
+new LuteceSearchList( document.getElementById( 'subscriptions_search' ), items, {
+	searchableChild: [ '.searchable' ],
+	hideClass: 'd-none',
+	extraSearchFunction: update
+} );
+selectAll.addEventListener( 'change', () => {
+	visibleItems().forEach( item => { checkboxOf( item ).checked = selectAll.checked; } );
+	update();
+} );
+items.forEach( item => checkboxOf( item ).addEventListener( 'change', update ) );
+unsubscribeForm.addEventListener( 'submit', () => {
+	unsubscribeForm.querySelectorAll( 'input[name="newsletter_id"]' ).forEach( input => input.remove( ) );
+	selectedCheckboxes().forEach( cb => {
+		const input = document.createElement( 'input' );
+		input.type = 'hidden';
+		input.name = 'newsletter_id';
+		input.value = cb.value;
+		unsubscribeForm.appendChild( input );
+	} );
+} );
+</script>
+<#else>
+<script type="module">
+import LuteceSearchList from './themes/shared/modules/luteceSearchList.js';
+
+new LuteceSearchList( document.getElementById( 'subscriptions_search' ), document.querySelectorAll( '#subscriptions-list .subscription-item' ), {
+	searchableChild: [ '.searchable' ],
+	hideClass: 'd-none'
+} );
+</script>
+</#if>
+</#if>

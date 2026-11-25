@@ -44,7 +44,6 @@ public final class NewsLetterConstants
     public static final String CONSTANT_SLASH = "/";
     public static final String CONSTANT_PDF_FILE_TYPE = "pdf";
     public static final String PLUGIN_NAME = "newsletter";
-    public static final String PROPERTY_FileProviderStore = "newsletter.FileProviderStore";
 
     ///////////////////////////////////////////////////////////////////////
     // BOOKMARKS
@@ -52,9 +51,12 @@ public final class NewsLetterConstants
     public static final String MARK_TEMPLATE_ID = "template_id";
     public static final String MARK_TEMPLATE_TYPE = "template_type";
     public static final String MARK_TEMPLATE_DESCRIPTION = "template_description";
-    public static final String MARK_TEMPLATE_FILE_NAME = "template_file_name";
-    public static final String MARK_TEMPLATE_PICTURE = "template_picture";
+    /**
+     * @deprecated the template source is given to the editor under its own escaped marker; kept for the code built against this constant
+     */
+    @Deprecated
     public static final String MARK_TEMPLATE_SOURCE = "template_source";
+    public static final String MARK_TEMPLATE_PICTURE = "template_picture";
     public static final String MARK_SUBSCRIBER_EMAIL = "subscriber_email";
     public static final String MARK_SUBSCRIBER_EMAIL_EACH = "@email@"; // TODO remove the @
     public static final String MARK_SUBSCRIBER_DATE = "subscriber_date";
@@ -64,10 +66,16 @@ public final class NewsLetterConstants
     public static final String PROPERTY_UNSUBSCRIBE_TRUE = "TRUE"; // FIXME
     public static final String PROPERTY_UNSUBSCRIBE_FALSE = "FALSE"; // FIXME
     public static final String PROPERTY_ABSOLUTE_URL_TRUE = "TRUE"; // FIXME
+    /**
+     * @deprecated no template reads it any more; kept for the code built against this constant
+     */
+    @Deprecated
     public static final String MARK_TEMPLATE_FILE = "template_file";
-    public static final String MARK_TEMPLATE_IMAGE = "template_image";
+    /**
+     * @deprecated no template reads it any more; kept for the code built against this constant
+     */
+    @Deprecated
     public static final String MARK_TEMPLATE_IMAGE_NAME = "template_image_name";
-    public static final String MARK_TEMPLATE_IMAGE_LIST = "template_image_list";
     public static final String MARK_SENDING = "sending";
     public static final String WEBAPP_PATH_FOR_LINKSERVICE = "@webapp_path_for_linkservice@";
 
@@ -75,7 +83,7 @@ public final class NewsLetterConstants
     // bookmark to use for mail template
     public static final String MARK_CONFIRM_URL = "confirm_url";
     public static final String PROPERTY_CONFIRM_MAIL_SENDER_NAME = AppPropertiesService.getProperty( "newsletter.confirm.senderName", "CONFIRMATION" );
-    public static final String PROPERTY_CONFIRM_MAIL_SENDER_ADDRESS = AppPropertiesService.getProperty( "newsletter.confirm.sender", "noreply@paris.fr" );
+    public static final String PROPERTY_CONFIRM_MAIL_SENDER_ADDRESS = AppPropertiesService.getProperty( "newsletter.confirm.senderMail", "noreply@paris.fr" );
 
     ///////////////////////////////////////////////////////////////////////
     // properties
@@ -99,15 +107,6 @@ public final class NewsLetterConstants
     public static final String PARAMETER_USER_ID = "user_id";
 
     // newsletter templates //////////////////////////////////////////
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_NAME = "newsletter_template_name";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_FILE = "newsletter_template_file";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_PICTURE = "newsletter_template_picture";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_WORKGROUP = "newsletter_template_workgroup";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_NEW_FILE = "newsletter_template_new_file";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_NEW_PICTURE = "newsletter_template_new_picture";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_TYPE = "newsletter_template_type";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_ID = "newsletter_template_id";
-    public static final String PARAMETER_NEWSLETTER_TEMPLATE_SOURCE = "newsletter_template_source";
     public static final String PARAMETER_NEWSLETTER_IMPORT_PATH = "newsletter_import_path";
     public static final String MARK_TEMPLATE = "template";
 

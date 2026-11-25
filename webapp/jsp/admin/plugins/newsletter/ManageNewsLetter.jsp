@@ -1,8 +1,9 @@
 <%@ page errorPage="../../ErrorPage.jsp" %>
-<%@ page import="fr.paris.lutece.plugins.newsletter.web.NewsletterJspBean" %>
+
+${ pageContext.setAttribute( 'strContent', newsletterJspBean.processController( pageContext.request , pageContext.response ) ) }
+
 <jsp:include page="../../AdminHeader.jsp" />
 
-${ newsletterJspBean.init( pageContext.request, NewsletterJspBean.RIGHT_NEWSLETTER_MANAGEMENT ) }
-${ newsletterJspBean.getManageNewsLetters( pageContext.request ) }
+${ pageContext.getAttribute( 'strContent' ) }
 
 <%@ include file="../../AdminFooter.jsp" %>

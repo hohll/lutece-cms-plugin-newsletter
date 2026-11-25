@@ -1,9 +1,9 @@
 <%@ page errorPage="../../ErrorPage.jsp" %>
 <jsp:include page="../../PortletAdminHeader.jsp" />
 
-<jsp:useBean id="subscriptionPortletNewsletter" scope="session" class="fr.paris.lutece.plugins.newsletter.web.portlet.NewsLetterSubscriptionPortletJspBean" />
+<%@page import="fr.paris.lutece.plugins.newsletter.web.portlet.NewsLetterSubscriptionPortletJspBean"%>
 
-<% subscriptionPortletNewsletter.init( request, subscriptionPortletNewsletter.RIGHT_MANAGE_ADMIN_SITE ); %>
-<%= subscriptionPortletNewsletter.getCreate( request ) %>
+${ newsletterSubscriptionPortletJspBean.init( pageContext.request, NewsLetterSubscriptionPortletJspBean.RIGHT_MANAGE_ADMIN_SITE ) }
+${ newsletterSubscriptionPortletJspBean.getCreate( pageContext.request ) }
 
 <%@ include file="../../AdminFooter.jsp" %>

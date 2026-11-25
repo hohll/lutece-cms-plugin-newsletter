@@ -36,6 +36,7 @@ package fr.paris.lutece.plugins.newsletter.business.portlet;
 import fr.paris.lutece.portal.business.portlet.IPortletInterfaceDAO;
 import fr.paris.lutece.portal.business.portlet.PortletHome;
 import fr.paris.lutece.portal.business.portlet.PortletTypeHome;
+import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.spi.CDI;
 
 import java.util.Set;
@@ -43,13 +44,19 @@ import java.util.Set;
 /**
  * This class provides instances management methods for NewsLetterSubscriptionPortlet objects
  */
+@ApplicationScoped
 public class NewsLetterSubscriptionPortletHome extends PortletHome
 {
-    // This class implements the Singleton design pattern.
-    private static NewsLetterSubscriptionPortletHome _singleton = new NewsLetterSubscriptionPortletHome( );
-
     // Static variable pointed at the DAO instance
     private static INewsLetterSubscriptionPortletDAO _dao = CDI.current( ).select( INewsLetterSubscriptionPortletDAO.class ).get( );
+
+    /**
+     * Constructor, public: the core also creates the portlet homes by reflection
+     */
+    public NewsLetterSubscriptionPortletHome( )
+    {
+        super( );
+    }
 
     /**
      * Returns the identifier of the portlet type
@@ -69,9 +76,10 @@ public class NewsLetterSubscriptionPortletHome extends PortletHome
      *
      * @return the NewsLetterSubscription Portlet instance
      */
+    @Deprecated( since = "8.0", forRemoval = true )
     public static PortletHome getInstance( )
     {
-        return _singleton;
+        return CDI.current( ).select( NewsLetterSubscriptionPortletHome.class ).get( );
     }
 
     /**

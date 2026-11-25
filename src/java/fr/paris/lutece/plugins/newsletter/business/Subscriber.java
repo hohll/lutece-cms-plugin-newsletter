@@ -42,10 +42,27 @@ public class Subscriber
 {
     /////////////////////////////////////////////////////////////////////////////////
     // Constants
+    /**
+     * Status of a subscriber who receives the newsletters he subscribed to
+     */
+    public static final int STATUS_ACTIVE = 1;
+
+    /**
+     * Status of a suspended subscriber: he keeps his subscriptions but receives no newsletter
+     */
+    public static final int STATUS_SUSPENDED = 0;
+
+    /**
+     * The RBAC resource type of the management of the subscribers of all the newsletters
+     */
+    public static final String RESOURCE_TYPE = "NEWSLETTER_SUBSCRIBER";
+
     private boolean _bConfirmed;
     private int _nId;
     private String _strEmail;
     private Timestamp _dDateSubscription;
+    private int _nStatus = STATUS_ACTIVE;
+    private Timestamp _dateStatusUpdate;
 
     /**
      * Returns the subscriber's identifier
@@ -129,5 +146,57 @@ public class Subscriber
     public void setConfirmed( boolean bConfirmed )
     {
         _bConfirmed = bConfirmed;
+    }
+
+    /**
+     * Returns the status of the subscriber
+     *
+     * @return {@link #STATUS_ACTIVE} or {@link #STATUS_SUSPENDED}
+     */
+    public int getStatus( )
+    {
+        return _nStatus;
+    }
+
+    /**
+     * Sets the status of the subscriber
+     *
+     * @param nStatus
+     *            {@link #STATUS_ACTIVE} or {@link #STATUS_SUSPENDED}
+     */
+    public void setStatus( int nStatus )
+    {
+        _nStatus = nStatus;
+    }
+
+    /**
+     * Tells whether the subscriber is suspended
+     *
+     * @return <b>true</b> if the subscriber is suspended, <b>false</b> otherwise
+     */
+    public boolean isSuspended( )
+    {
+        return _nStatus == STATUS_SUSPENDED;
+    }
+
+    /**
+     * Returns the date of the last change of the status
+     *
+     * @return the date of the last change of the status, null if the status never changed
+     */
+    public Timestamp getDateStatusUpdate( )
+    {
+        return _dateStatusUpdate;
+    }
+
+    /**
+     * Sets the date of the last change of the status
+     *
+     * @param dateStatusUpdate
+     *            the date of the last change of the status
+     */
+    public void setDateStatusUpdate( Timestamp dateStatusUpdate )
+    {
+        _dateStatusUpdate = dateStatusUpdate;
     }
 }

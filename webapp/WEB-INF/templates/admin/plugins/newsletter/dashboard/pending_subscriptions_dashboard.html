@@ -1,0 +1,11 @@
+<#-- The number of active subscribers having a subscription awaiting their confirmation, on the newsletters the administrator manages the subscribers of (PendingSubscriptionsDashboardComponent).
+     Nothing is shown when there is none. No card: a plain line. The class box-widget and the data-id keep it movable and hideable on the admin home (dashboard-widgets.js). -->
+<#if pending_count gt 0>
+<@div id='newsletter_pending_subscribers' class='box-widget d-flex align-items-center py-2' params={"data-id": "newsletter_pending_subscribers", "data-dw-title": "#i18n{newsletter.dashboard.pendingSubscriptions.text}"}>
+	<@link href='jsp/admin/plugins/newsletter/ManageSubscribersGlobal.jsp?view=manageSubscribers&subscriber_status=active&subscription_state=pending' class='d-inline-flex align-items-center gap-2 text-reset' title='#i18n{newsletter.adminFeature.newsletter_subscriber_management.name}'>
+		<@icon style='mail-question' class='text-orange' />
+		<strong>${pending_count?c}</strong>
+		<span>#i18n{newsletter.dashboard.pendingSubscriptions.text}</span>
+	</@link>
+</@div>
+</#if>

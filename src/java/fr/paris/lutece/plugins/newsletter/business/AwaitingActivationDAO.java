@@ -49,6 +49,7 @@ public class AwaitingActivationDAO implements IAwaitingActivationDAO
     private static final String SQL_QUERY_INSERT = "INSERT INTO newsletter_awaiting_confirmation(id_user, generated_key) VALUES (?, ?)";
     private static final String SQL_QUERY_EXISTS = "SELECT id_user, generated_key FROM newsletter_awaiting_confirmation WHERE id_user = ? AND generated_key = ?";
     private static final String SQL_QUERY_DELETE = "DELETE FROM newsletter_awaiting_confirmation WHERE id_user = ? AND generated_key = ?";
+    private static final String SQL_QUERY_DELETE_BY_USER = "DELETE FROM newsletter_awaiting_confirmation WHERE id_user = ?";
 
     /**
      * Removes the entry
@@ -67,6 +68,23 @@ public class AwaitingActivationDAO implements IAwaitingActivationDAO
             daoUtil.setInt( 1, nIdUser );
             daoUtil.setInt( 2, nKey );
 
+            daoUtil.executeUpdate( );
+        }
+    }
+
+    /**
+     * Removes all the keys of a user
+     *
+     * @param nIdUser
+     *            the user id
+     * @param plugin
+     *            the plugin
+     */
+    public void deleteByUser( int nIdUser, Plugin plugin )
+    {
+        try ( DAOUtil daoUtil = new DAOUtil( SQL_QUERY_DELETE_BY_USER, plugin ) )
+        {
+            daoUtil.setInt( 1, nIdUser );
             daoUtil.executeUpdate( );
         }
     }
