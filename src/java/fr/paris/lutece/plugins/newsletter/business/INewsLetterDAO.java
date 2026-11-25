@@ -75,7 +75,7 @@ public interface INewsLetterDAO
      *            the newsletter identifier
      * @param plugin
      *            the Plugin
-     * @return the object inserted
+     * @return the newsletter, null when no newsletter has this identifier
      */
     NewsLetter load( int nNewsLetterId, Plugin plugin );
 

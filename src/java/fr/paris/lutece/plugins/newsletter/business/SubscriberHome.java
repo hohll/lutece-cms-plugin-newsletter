@@ -93,7 +93,7 @@ public final class SubscriberHome
      *            the primary key of the subscriber
      * @param plugin
      *            the plugin
-     * @return an instance of the class
+     * @return the subscriber, null when no subscriber has this identifier
      */
     public static Subscriber findByPrimaryKey( int nKey, Plugin plugin )
     {
