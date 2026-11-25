@@ -82,7 +82,7 @@ public class NewsLetterArchiveService
 
         if ( ( strSendingId == null ) || !strSendingId.matches( REGEX_ID ) )
         {
-            SiteMessageService.setMessage( request, NewsLetterConstants.PROPERTY_NO_NEWSLETTER_CHOSEN_TITLE_MESSAGE, SiteMessage.TYPE_ERROR );
+            SiteMessageService.setMessage( request, NewsLetterConstants.PROPERTY_ARCHIVE_NOT_FOUND_TITLE_MESSAGE, SiteMessage.TYPE_ERROR );
             return StringUtils.EMPTY;
         }
 
@@ -91,7 +91,7 @@ public class NewsLetterArchiveService
 
         if ( ( sending == null ) || StringUtils.isEmpty( sending.getHtml( ) ) )
         {
-            SiteMessageService.setMessage( request, NewsLetterConstants.PROPERTY_NO_NEWSLETTER_CHOSEN_TITLE_MESSAGE, SiteMessage.TYPE_ERROR );
+            SiteMessageService.setMessage( request, NewsLetterConstants.PROPERTY_ARCHIVE_NOT_FOUND_TITLE_MESSAGE, SiteMessage.TYPE_ERROR );
             return StringUtils.EMPTY;
         }
 

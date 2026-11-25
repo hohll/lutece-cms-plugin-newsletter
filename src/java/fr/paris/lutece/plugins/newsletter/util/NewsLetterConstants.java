@@ -120,6 +120,7 @@ public final class NewsLetterConstants
     public static final String PROPERTY_UNSUBSCRIPTION_OK_TITLE_MESSAGE = "newsletter.siteMessage.unsubscription_ok.title";
     public static final String PROPERTY_UNSUBSCRIPTION_OK_ALERT_MESSAGE = "newsletter.siteMessage.unsubscription_ok.message";
     public static final String PROPERTY_NO_NEWSLETTER_CHOSEN_TITLE_MESSAGE = "newsletter.siteMessage.no_newsletter_chosen.title";
+    public static final String PROPERTY_ARCHIVE_NOT_FOUND_TITLE_MESSAGE = "newsletter.siteMessage.archive_not_found.title";
     public static final String PROPERTY_NO_NEWSLETTER_CHOSEN_ERROR_MESSAGE = "newsletter.siteMessage.no_newsletter_chosen.message";
     public static final String PROPERTY_INVALID_MAIL_TITLE_MESSAGE = "newsletter.siteMessage.invalid_mail.title";
     public static final String PROPERTY_INVALID_MAIL_ERROR_MESSAGE = "newsletter.siteMessage.invalid_mail.message";
