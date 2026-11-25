@@ -88,7 +88,7 @@ public class NewsLetterRegistrationService
     private static final String PARAMETER_TOS = "tos";
     private static final String TEMPLATE_CONFIRM_MAIL = "admin/plugins/newsletter/confirm_mail.html";
     private static final String CONFIRM_MAIL_CSS = "admin/plugins/newsletter/confirm_mail_css.html";
-    private static final String JSP_PORTAL = "/jsp/site/Portal.jsp";
+    private static final String JSP_PORTAL = "jsp/site/Portal.jsp";
     // properties
     private static final String PROPERTY_MESSAGE_CONFIRM_MAIL_TITLE = "newsletter.confirm_mail.title";
     private static final String PROPERTY_LIMIT_CONFIRM_DAYS = "newsletter.confirm.limit";
