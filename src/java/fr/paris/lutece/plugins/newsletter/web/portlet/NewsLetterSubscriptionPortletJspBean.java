@@ -33,17 +33,26 @@
  */
 package fr.paris.lutece.plugins.newsletter.web.portlet;
 
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
+import jakarta.enterprise.context.RequestScoped;
 import fr.paris.lutece.api.user.User;
 import fr.paris.lutece.plugins.newsletter.business.NewsLetter;
 import fr.paris.lutece.plugins.newsletter.business.NewsLetterHome;
 import fr.paris.lutece.plugins.newsletter.business.portlet.NewsLetterSubscriptionPortlet;
 import fr.paris.lutece.plugins.newsletter.business.portlet.NewsLetterSubscriptionPortletHome;
 import fr.paris.lutece.plugins.newsletter.util.NewsLetterConstants;
+import fr.paris.lutece.portal.service.i18n.I18nService;
+import fr.paris.lutece.portal.business.portlet.PortletTypeHome;
+import fr.paris.lutece.portal.business.portlet.Portlet;
 import fr.paris.lutece.portal.business.portlet.PortletHome;
 import fr.paris.lutece.portal.service.message.SiteMessage;
 import fr.paris.lutece.portal.service.message.SiteMessageException;
 import fr.paris.lutece.portal.service.message.SiteMessageService;
 import fr.paris.lutece.portal.service.plugin.Plugin;
+import fr.paris.lutece.portal.service.message.AdminMessage;
+import fr.paris.lutece.portal.service.message.AdminMessageService;
+import fr.paris.lutece.portal.service.security.SecurityTokenService;
 import fr.paris.lutece.portal.service.plugin.PluginService;
 import fr.paris.lutece.portal.service.workgroup.AdminWorkgroupService;
 import fr.paris.lutece.portal.web.portlet.PortletJspBean;
@@ -64,8 +73,18 @@ import org.apache.commons.lang3.StringUtils;
  * This class provides the user interface to manage the newsletter subscription portlets. The common portlet data, the rendering template included, are
  * handled by the core.
  */
+@RequestScoped
+@Named( "newsletterSubscriptionPortletJspBean" )
 public class NewsLetterSubscriptionPortletJspBean extends PortletJspBean
 {
+    private static final String ACTION_CREATE_PORTLET = "newsletter.createSubscriptionPortlet";
+    private static final String ACTION_MODIFY_PORTLET = "newsletter.modifySubscriptionPortlet";
+    private static final String MESSAGE_INVALID_TOKEN = "newsletter.message.invalidToken";
+    private static final String MESSAGE_PORTLET_TYPE_NOT_FOUND = "newsletter.message.portletTypeNotFound";
+    private static final String MESSAGE_PORTLET_NOT_FOUND = "newsletter.message.portletNotFound";
+
+    @Inject
+    private transient NewsLetterSubscriptionPortletHome _portletHome;
     /**
      * Serial version UID
      */
@@ -96,11 +115,18 @@ public class NewsLetterSubscriptionPortletJspBean extends PortletJspBean
     {
         String strPageId = request.getParameter( PARAMETER_PAGE_ID );
         String strPortletTypeId = request.getParameter( PARAMETER_PORTLET_TYPE_ID );
+
+        if ( !StringUtils.isNumeric( strPageId ) || StringUtils.isEmpty( strPortletTypeId ) || PortletTypeHome.findByPrimaryKey( strPortletTypeId ) == null )
+        {
+            return I18nService.getLocalizedString( MESSAGE_PORTLET_TYPE_NOT_FOUND, getLocale( ) );
+        }
         Plugin plugin = PluginService.getPlugin( NewsLetterConstants.PLUGIN_NAME );
 
         Map<String, Object> model = new HashMap<>( );
         model.put( MARK_NEWSLETTER_LIST, getAuthorizedNewsletters( plugin ) );
         model.put( MARK_SELECTED_NEWSLETTER_LIST, new HashSet<Integer>( ) );
+
+        model.put( SecurityTokenService.MARK_TOKEN, getSecurityTokenService( ).getToken( request, ACTION_CREATE_PORTLET ) );
 
         HtmlTemplate template = getCreateTemplate( strPageId, strPortletTypeId, model );
 
@@ -116,6 +142,11 @@ public class NewsLetterSubscriptionPortletJspBean extends PortletJspBean
      */
     public String doCreate( HttpServletRequest request )
     {
+        if ( !getSecurityTokenService( ).validate( request, ACTION_CREATE_PORTLET ) )
+        {
+            return AdminMessageService.getMessageUrl( request, MESSAGE_INVALID_TOKEN, AdminMessage.TYPE_STOP );
+        }
+
         NewsLetterSubscriptionPortlet portlet = new NewsLetterSubscriptionPortlet( );
 
         // common portlet attributes, the rendering template included
@@ -126,7 +157,7 @@ public class NewsLetterSubscriptionPortletJspBean extends PortletJspBean
             return strErrorUrl;
         }
 
-        NewsLetterSubscriptionPortletHome.getInstance( ).create( portlet );
+        _portletHome.create( portlet );
         modifySubscriptions( request, portlet );
 
         // Displays the page with the new Portlet
@@ -142,14 +173,21 @@ public class NewsLetterSubscriptionPortletJspBean extends PortletJspBean
      */
     public String getModify( HttpServletRequest request )
     {
-        String strPortletId = request.getParameter( PARAMETER_PORTLET_ID );
-        int nPortletId = Integer.parseInt( strPortletId );
-        NewsLetterSubscriptionPortlet portlet = (NewsLetterSubscriptionPortlet) PortletHome.findByPrimaryKey( nPortletId );
+        NewsLetterSubscriptionPortlet portlet = findPortlet( request );
+
+        if ( portlet == null )
+        {
+            return I18nService.getLocalizedString( MESSAGE_PORTLET_NOT_FOUND, getLocale( ) );
+        }
+
+        int nPortletId = portlet.getId( );
         Plugin plugin = PluginService.getPlugin( portlet.getPluginName( ) );
 
         Map<String, Object> model = new HashMap<>( );
         model.put( MARK_NEWSLETTER_LIST, getAuthorizedNewsletters( plugin ) );
         model.put( MARK_SELECTED_NEWSLETTER_LIST, NewsLetterSubscriptionPortletHome.findSelectedNewsletters( nPortletId ) );
+
+        model.put( SecurityTokenService.MARK_TOKEN, getSecurityTokenService( ).getToken( request, ACTION_MODIFY_PORTLET ) );
 
         HtmlTemplate template = getModifyTemplate( portlet, model );
 
@@ -165,9 +203,18 @@ public class NewsLetterSubscriptionPortletJspBean extends PortletJspBean
      */
     public String doModify( HttpServletRequest request )
     {
-        String strPortletId = request.getParameter( PARAMETER_PORTLET_ID );
-        int nPortletId = Integer.parseInt( strPortletId );
-        NewsLetterSubscriptionPortlet portlet = (NewsLetterSubscriptionPortlet) PortletHome.findByPrimaryKey( nPortletId );
+        if ( !getSecurityTokenService( ).validate( request, ACTION_MODIFY_PORTLET ) )
+        {
+            return AdminMessageService.getMessageUrl( request, MESSAGE_INVALID_TOKEN, AdminMessage.TYPE_STOP );
+        }
+
+        NewsLetterSubscriptionPortlet portlet = findPortlet( request );
+
+        if ( portlet == null )
+        {
+            return AdminMessageService.getMessageUrl( request, MESSAGE_PORTLET_NOT_FOUND, AdminMessage.TYPE_STOP );
+        }
+
 
         // common portlet attributes, the rendering template included
         String strErrorUrl = setPortletCommonData( request, portlet );
@@ -272,5 +319,20 @@ public class NewsLetterSubscriptionPortletJspBean extends PortletJspBean
                 NewsLetterConstants.PROPERTY_SUBSCRIPTION_OK_TITLE_MESSAGE, null, null, SiteMessage.TYPE_CONFIRMATION );
 
         return StringUtils.EMPTY;
+    }
+
+    /**
+     * Returns the portlet of this type whose identifier is in the request
+     *
+     * @param request
+     *            the HTTP request
+     * @return the portlet, null when the identifier is missing or not a portlet of this type
+     */
+    private NewsLetterSubscriptionPortlet findPortlet( HttpServletRequest request )
+    {
+        String strPortletId = request.getParameter( PARAMETER_PORTLET_ID );
+        Portlet portlet = StringUtils.isNumeric( strPortletId ) ? PortletHome.findByPrimaryKey( Integer.parseInt( strPortletId ) ) : null;
+
+        return ( portlet instanceof NewsLetterSubscriptionPortlet ) ? (NewsLetterSubscriptionPortlet) portlet : null;
     }
 }

@@ -1,53 +1,56 @@
+<#include "/admin/plugins/newsletter/newsletter_tabs.html" />
 <@pageContainer>
 	<@pageColumn>
-		<@pageHeader title='#i18n{newsletter.manage_archive.boxTitle}' />
-		<@breadcrumbs class='mb-3'>
-			<@breadcrumbItem>
-				<@link href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' title='#i18n{newsletter.manage_newsletters.boxTitle}'>
-					<@icon style='home' /> #i18n{newsletter.manage_newsletters.boxTitle}
-				</@link>
-			</@breadcrumbItem>
-			<@breadcrumbItem><@link href='jsp/admin/plugins/newsletter/ModifyNewsLetter.jsp?newsletter_id=${newsletter_id}'>${newsletter_name!}</@link></@breadcrumbItem>
-			<@breadcrumbItem>#i18n{newsletter.manage_archive.boxTitle}</@breadcrumbItem>
-		</@breadcrumbs>
-		<@messages infos=infos />
-		<#if newsletters_list?has_content>
-			<@tform method='post' id='form_bulk_delete' action='jsp/admin/plugins/newsletter/RemoveMultiNewsLetter.jsp' boxed=true>
-				<@input type='hidden' name='newsletter_id' value='${newsletter_id}' id='newsletter_id' />
-				<@div class='d-flex justify-content-end align-items-baseline'>
-					<@checkBox orientation='switch' id='select_all' name='select_all' labelKey='#i18n{portal.users.modify_user_rights.buttonLabelSelectAll}' />
-					<@button id='delete-all' type='submit' color='danger' size='sm' class='ms-2' buttonIcon='trash' title='#i18n{portal.util.labelDelete}' hideTitle=['xs', 'sm'] disabled=true />
-				</@div>
-				<@manageFeature id='archive-list' class='mt-1'>
-					<#list newsletters_list as newsletter>
-						<@manageFeatureItem>
-							<@manageFeatureItemColumn auto=true>
-								<@checkBox orientation='switch' id='newsletter_selection_${newsletter.id}' name='newsletter_selection' value='${newsletter.id}' labelKey=newsletter.emailSubject!'${newsletter.id}' labelClass='visually-hidden' />
-							</@manageFeatureItemColumn>
-							<@manageFeatureItemColumn auto=true valign='center'>
-								<@p class='fw-bold me-2'>${newsletter.emailSubject!}</@p>
-								<@p>#i18n{newsletter.manage_archive.columnTitleDate} : ${newsletter.date!}</@p>
-							</@manageFeatureItemColumn>
-							<@manageFeatureItemColumn align='end'>
-								<@aButton href='jsp/site/plugins/newsletter/ViewNewsletterArchive.jsp?sending_id=${newsletter.id}' title='#i18n{newsletter.manage_archive.showArchive}' target='_blank' buttonIcon='external-link' hideTitle=['all'] params={'aria-label': '#i18n{newsletter.manage_archive.showArchive} ' + newsletter.emailSubject! + ' #i18n{portal.theme.newWindowLink}'} />
-								<@aButton href='jsp/admin/plugins/newsletter/RemoveSendingNewsLetter.jsp?newsletter_id=${newsletter_id}&sending_newsletter_id=${newsletter.id}' title='#i18n{portal.util.labelDelete}' buttonIcon='trash' color='danger' hideTitle=['all'] params={'aria-label': '#i18n{portal.util.labelDelete} ' + newsletter.emailSubject!} />
-							</@manageFeatureItemColumn>
-						</@manageFeatureItem>
-					</#list>
-				</@manageFeature>
-			</@tform>
-			<#if newsletters_list?size gte 10><@paginationAdmin paginator=paginator combo=1 /></#if>
-		<#else>
-			<@card>
-				<@empty title='#i18n{newsletter.manage_archive.noArchive}' iconName='archive-off' />
-			</@card>
-		</#if>
+		<@newsletterPageHeader newsletter=newsletter />
+		<@tabs keepState=false>
+			<@newsletterTabs newsletter=newsletter activeTab='archive' />
+			<@tabContent>
+				<@tabPanel id='newsletter-archive' active=true>
+					<@messages infos=infos![] />
+					<#if newsletters_list?has_content>
+						<@tform method='post' id='form_bulk_delete' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp'>
+							<@input type='hidden' name='view' value='confirmRemoveMultiSendingNewsLetter' />
+							<@input type='hidden' name='newsletter_id' value='${newsletter_id?c}' id='newsletter_id' />
+							<@row class='justify-content-end align-items-center g-2 mb-2'>
+								<@columns class='col-auto me-auto'>
+									<@checkBox orientation='switch' id='select_all' name='select_all' value='1' labelKey='#i18n{portal.users.modify_user_rights.buttonLabelSelectAll}' wrapperClass='mb-0' />
+								</@columns>
+								<@columns class='col-auto'>
+									<@button id='delete-all' type='submit' color='danger' buttonIcon='trash' title='#i18n{portal.util.labelDelete}' hideTitle=['xs','sm'] disabled=true />
+								</@columns>
+							</@row>
+							<@manageFeature id='archive-list'>
+								<#list newsletters_list as sending>
+									<@manageFeatureItem>
+										<@manageFeatureItemColumn auto=true>
+											<@checkBox orientation='switch' id='newsletter_selection_${sending.id?c}' name='newsletter_selection' value='${sending.id?c}' labelKey='${sending.emailSubject!}' labelClass='visually-hidden' />
+										</@manageFeatureItemColumn>
+										<@manageFeatureItemColumn auto=true flex=false>
+											<@p class='fw-bold mb-0'>${sending.emailSubject!}</@p>
+											<@p class='text-secondary mb-0'>#i18n{newsletter.manage_archive.columnTitleDate} : ${sending.date!}</@p>
+										</@manageFeatureItemColumn>
+										<@manageFeatureItemColumn align='end'>
+											<@aButton href='jsp/site/plugins/newsletter/ViewNewsletterArchive.jsp?sending_id=${sending.id?c}' title='#i18n{newsletter.manage_archive.showArchive}' target='_blank' buttonIcon='external-link' color='light' hideTitle=['all'] params={'aria-label': '#i18n{newsletter.manage_archive.showArchive} ' + sending.emailSubject!} />
+											<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=confirmRemoveSendingNewsLetter&newsletter_id=${newsletter_id?c}&sending_newsletter_id=${sending.id?c}' title='#i18n{portal.util.labelDelete}' buttonIcon='trash' color='danger' hideTitle=['all'] params={'aria-label': '#i18n{portal.util.labelDelete} ' + sending.emailSubject!} />
+										</@manageFeatureItemColumn>
+									</@manageFeatureItem>
+								</#list>
+							</@manageFeature>
+						</@tform>
+						<#if paginator.pagesCount gt 1 || paginator.itemsCount gt 10><@paginationAdmin paginator=paginator combo=1 /></#if>
+					<#else>
+						<@empty title='#i18n{newsletter.manage_archive.noArchive}' iconName='archive-off' />
+					</#if>
+				</@tabPanel>
+			</@tabContent>
+		</@tabs>
 	</@pageColumn>
 </@pageContainer>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 	const btnDeleteAll = document.getElementById('delete-all');
 	const selectAll = document.getElementById('select_all');
+	if ( !btnDeleteAll ) { return; }
 	const checkboxes = document.querySelectorAll('#archive-list input[name="newsletter_selection"]');
 
 	function updateDeleteButton() {

@@ -47,8 +47,8 @@ import org.apache.commons.lang3.StringUtils;
 @Named( "newsletter.newsletterPropertiesDAO" )
 public class NewsletterPropertiesDAO implements INewsletterPropertiesDAO
 {
-    private static final String SQL_QUERY_SELECT = "SELECT validation_activated, captcha_activated, tos FROM newsletter_properties ";
-    private static final String SQL_QUERY_UPDATE = "UPDATE newsletter_properties SET validation_activated = ?, captcha_activated = ?, tos = ?";
+    private static final String SQL_QUERY_SELECT = "SELECT validation_activated, captcha_activated, tos, editor FROM newsletter_properties ";
+    private static final String SQL_QUERY_UPDATE = "UPDATE newsletter_properties SET validation_activated = ?, captcha_activated = ?, tos = ?, editor = ?";
 
     /**
      * loads data from NewsLetterProperties
@@ -79,6 +79,8 @@ public class NewsletterPropertiesDAO implements INewsletterPropertiesDAO
                 {
                     properties.setTOS( null );
                 }
+
+                properties.setEditor( daoUtil.getString( 4 ) );
             }
         }
 
@@ -100,6 +102,7 @@ public class NewsletterPropertiesDAO implements INewsletterPropertiesDAO
             daoUtil.setBoolean( 1, properties.isValidationActive( ) );
             daoUtil.setBoolean( 2, properties.isCaptchaActive( ) );
             daoUtil.setString( 3, properties.getTOS( ) );
+            daoUtil.setString( 4, properties.getEditor( ) );
 
             daoUtil.executeUpdate( );
         }

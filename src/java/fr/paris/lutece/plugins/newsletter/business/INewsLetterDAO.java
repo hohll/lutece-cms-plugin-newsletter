@@ -38,6 +38,7 @@ import fr.paris.lutece.util.ReferenceList;
 
 import java.sql.Timestamp;
 import java.util.Collection;
+import java.util.Map;
 
 /*
  * The interface defining the business methods used by the newsletter plugin
@@ -262,4 +263,24 @@ public interface INewsLetterDAO
      */
     int selectNbrActiveSubscribers( int nNewsLetterId, String strSearchString, Plugin plugin );
 
+    /**
+     * Counts the subscribers of every newsletter: all of them, and those who confirmed their subscription
+     * 
+     * @param plugin
+     *            the Plugin
+     * @return keyed by newsletter identifier, the number of subscribers (first) and of confirmed subscribers (second); a newsletter without
+     *         subscriber is absent
+     */
+    Map<Integer, Pair<Integer, Integer>> selectSubscriberCountsByNewsletter( Plugin plugin );
+
+    /**
+     * Counts the subscribers of a newsletter: all of them, and those who confirmed their subscription
+     * 
+     * @param nNewsLetterId
+     *            the identifier of the newsletter
+     * @param plugin
+     *            the Plugin
+     * @return the number of subscribers (first) and of confirmed subscribers (second)
+     */
+    Pair<Integer, Integer> selectSubscriberCounts( int nNewsLetterId, Plugin plugin );
 }

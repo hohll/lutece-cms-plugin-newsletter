@@ -33,15 +33,16 @@
  */
 package fr.paris.lutece.plugins.newsletter.service;
 
+import java.security.SecureRandom;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Random;
 import  java.util.Collection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
@@ -49,6 +50,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.servlet.http.HttpServletRequest;
 import org.apache.commons.lang3.StringUtils;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import static fr.paris.lutece.portal.service.admin.AdminUserService.getLocale;
 import static fr.paris.lutece.portal.service.portal.PortalService.getSiteName;
@@ -74,7 +76,6 @@ import fr.paris.lutece.portal.service.template.AppTemplateService;
 import fr.paris.lutece.portal.service.template.HtmlMarkup;
 import fr.paris.lutece.portal.service.util.AppLogService;
 import fr.paris.lutece.portal.service.util.AppPathService;
-import fr.paris.lutece.portal.service.util.AppPropertiesService;
 import fr.paris.lutece.util.html.HtmlTemplate;
 import fr.paris.lutece.util.string.StringUtil;
 import fr.paris.lutece.util.url.UrlItem;
@@ -91,12 +92,10 @@ public class NewsLetterRegistrationService
     private static final String JSP_PORTAL = "/jsp/site/Portal.jsp";
     // properties
     private static final String PROPERTY_MESSAGE_CONFIRM_MAIL_TITLE = "newsletter.confirm_mail.title";
-    private static final String PROPERTY_LIMIT_CONFIRM_DAYS = "newsletter.confirm.limit";
     private static final String REGEX_ID = "^[\\d]+$";
-    private static final String JCAPTCHA_PLUGIN = "jcaptcha";
 
     // default values
-    private static final int DEFAULT_LIMIT = 7;
+    private static final SecureRandom RANDOM = new SecureRandom( );
 
     @Inject
     @Named( BeanUtils.BEAN_CAPTCHA_SERVICE )
@@ -104,6 +103,9 @@ public class NewsLetterRegistrationService
 
     @Inject
     private NewsletterService _newsletterService;
+    @Inject
+    @ConfigProperty( name = "newsletter.confirm.limit", defaultValue = "7" )
+    private int _nConfirmLimit;
 
     private static final Plugin _plugin = PluginService.getPlugin( NewsletterPlugin.PLUGIN_NAME );
 
@@ -147,7 +149,7 @@ public class NewsLetterRegistrationService
             }
 
             // test the captcha
-            if ( PluginService.isPluginEnable( JCAPTCHA_PLUGIN ) && properties.isCaptchaActive( ) && _captchaService.isResolvable( )
+            if ( properties.isCaptchaActive( ) && _captchaService.isResolvable( )
                     && !_captchaService.get( ).validate( request ) )
             {
                 SiteMessageService.setMessage( request, NewsLetterConstants.PROPERTY_NO_JCAPTCHA_MESSAGE,
@@ -173,42 +175,7 @@ public class NewsLetterRegistrationService
 
             if ( properties.isValidationActive( ) )
             {
-                // generate validation key
-                Random random = new Random( );
-                int nAlea = random.nextInt( );
-                // add pair in db
-                AwaitingActivationHome.create( subscriber.getId( ), nAlea, _plugin );
-
-                StringBuilder sbUrl = new StringBuilder( AppPathService.getBaseUrl( request ) );
-                sbUrl.append( JSP_PORTAL );
-
-                UrlItem urlItem = new UrlItem( sbUrl.toString( ) );
-                urlItem.addParameter( NewsLetterConstants.PARAMETER_PAGE, NewsletterPlugin.PLUGIN_NAME );
-                urlItem.addParameter( NewsLetterConstants.PARAMETER_ACTION, NewsLetterConstants.ACTION_CONFIRM_SUBSCRIBE );
-                urlItem.addParameter( NewsLetterConstants.PARAMETER_KEY, nAlea );
-                urlItem.addParameter( NewsLetterConstants.PARAMETER_EMAIL, strEmail );
-                urlItem.addParameter( NewsLetterConstants.PARAMETER_USER_ID, subscriber.getId( ) );
-                NewsletterUtils.addParameters( urlItem, NewsLetterConstants.PARAMETER_NEWSLETTER_ID,
-                        request.getParameterValues( NewsLetterConstants.PARAMETER_NEWSLETTER_ID ) );
-                // The mail lists the newsletters chosen by the subscriber
-                List<String> listIdNewsLetterChosen = request.getParameterValues( NewsLetterConstants.PARAMETER_NEWSLETTER_ID ) != null
-                        ? Arrays.asList( request.getParameterValues( NewsLetterConstants.PARAMETER_NEWSLETTER_ID ) )
-                        : new ArrayList<>( );
-                Collection<NewsLetter> listNewsLetter = NewsLetterHome.findAll( PluginService.getPlugin( NewsletterPlugin.PLUGIN_NAME ) ).stream( )
-                        .filter( newsletter -> listIdNewsLetterChosen.contains( String.valueOf( newsletter.getId( ) ) ) ).toList( );
-              // read css file
-                String strCss = AppTemplateService.getTemplate( CONFIRM_MAIL_CSS, getLocale( request ), null ).getHtml( );
-
-                Map<String, Object> model = new HashMap<String, Object>( );
-                model.put( NewsLetterConstants.MARK_CONFIRM_CSS, HtmlMarkup.of( strCss ) );
-                model.put( NewsLetterConstants.MARK_CONFIRM_URL, urlItem.getUrl( ) );
-                model.put( NewsLetterConstants.MARK_NEWSLETTER_LIST, listNewsLetter);
-                model.put(NewsLetterConstants.MARK_SITE_NAME , getSiteName( ));
-
-                HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_CONFIRM_MAIL, getLocale( request ), model );
-                MailService.sendMailHtml( subscriber.getEmail( ), NewsLetterConstants.PROPERTY_CONFIRM_MAIL_SENDER_NAME,
-                        NewsLetterConstants.PROPERTY_CONFIRM_MAIL_SENDER_ADDRESS,
-                        I18nService.getLocalizedString( PROPERTY_MESSAGE_CONFIRM_MAIL_TITLE, request.getLocale( ) ), template.getHtml( ) );
+                sendConfirmationMail( subscriber, arrayNewsletters, AppPathService.getBaseUrl( request ), getLocale( request ), request.getLocale( ) );
             }
 
             String strMessage;
@@ -224,6 +191,61 @@ public class NewsLetterRegistrationService
 
             SiteMessageService.setMessage( request, strMessage, NewsLetterConstants.PROPERTY_SUBSCRIPTION_OK_TITLE_MESSAGE, SiteMessage.TYPE_CONFIRMATION );
         }
+    }
+
+    /**
+     * Tells whether the site offers a captcha service, which the subscription form may then use
+     * 
+     * @return true if a captcha service is available
+     */
+    public boolean isCaptchaAvailable( )
+    {
+        return _captchaService.isResolvable( );
+    }
+
+    /**
+     * Sends to a subscriber the email asking him to confirm his subscriptions: a new validation key is generated and the email holds the link that
+     * confirms the subscriptions to the given newsletters with this key
+     *
+     * @param subscriber
+     *            the subscriber
+     * @param arrayNewsletterIds
+     *            the identifiers of the newsletters to confirm
+     * @param strBaseUrl
+     *            the base url of the site, which the confirmation link points to
+     * @param locale
+     *            the locale of the email
+     * @param localeTitle
+     *            the locale of the title of the email
+     */
+    public void sendConfirmationMail( Subscriber subscriber, String [ ] arrayNewsletterIds, String strBaseUrl, Locale locale, Locale localeTitle )
+    {
+        int nAlea = RANDOM.nextInt( );
+        AwaitingActivationHome.create( subscriber.getId( ), nAlea, _plugin );
+
+        UrlItem urlItem = new UrlItem( strBaseUrl + JSP_PORTAL );
+        urlItem.addParameter( NewsLetterConstants.PARAMETER_PAGE, NewsletterPlugin.PLUGIN_NAME );
+        urlItem.addParameter( NewsLetterConstants.PARAMETER_ACTION, NewsLetterConstants.ACTION_CONFIRM_SUBSCRIBE );
+        urlItem.addParameter( NewsLetterConstants.PARAMETER_KEY, nAlea );
+        urlItem.addParameter( NewsLetterConstants.PARAMETER_EMAIL, subscriber.getEmail( ) );
+        urlItem.addParameter( NewsLetterConstants.PARAMETER_USER_ID, subscriber.getId( ) );
+        NewsletterUtils.addParameters( urlItem, NewsLetterConstants.PARAMETER_NEWSLETTER_ID, arrayNewsletterIds );
+        // The mail lists the newsletters chosen by the subscriber
+        List<String> listIdNewsLetterChosen = ( arrayNewsletterIds != null ) ? Arrays.asList( arrayNewsletterIds ) : new ArrayList<>( );
+        Collection<NewsLetter> listNewsLetter = NewsLetterHome.findAll( _plugin ).stream( )
+                .filter( newsletter -> listIdNewsLetterChosen.contains( String.valueOf( newsletter.getId( ) ) ) ).toList( );
+        String strCss = AppTemplateService.getTemplate( CONFIRM_MAIL_CSS, locale, null ).getHtml( );
+
+        Map<String, Object> model = new HashMap<>( );
+        model.put( NewsLetterConstants.MARK_CONFIRM_CSS, HtmlMarkup.of( strCss ) );
+        model.put( NewsLetterConstants.MARK_CONFIRM_URL, urlItem.getUrl( ) );
+        model.put( NewsLetterConstants.MARK_NEWSLETTER_LIST, listNewsLetter );
+        model.put( NewsLetterConstants.MARK_SITE_NAME, getSiteName( ) );
+
+        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_CONFIRM_MAIL, locale, model );
+        MailService.sendMailHtml( subscriber.getEmail( ), NewsLetterConstants.PROPERTY_CONFIRM_MAIL_SENDER_NAME,
+                NewsLetterConstants.PROPERTY_CONFIRM_MAIL_SENDER_ADDRESS, I18nService.getLocalizedString( PROPERTY_MESSAGE_CONFIRM_MAIL_TITLE, localeTitle ),
+                template.getHtml( ) );
     }
 
     /**
@@ -403,8 +425,7 @@ public class NewsLetterRegistrationService
 
         long lDuration = System.currentTimeMillis( );
         Plugin plugin = PluginService.getPlugin( NewsletterPlugin.PLUGIN_NAME );
-        int nConfirmLimit = AppPropertiesService.getPropertyInt( PROPERTY_LIMIT_CONFIRM_DAYS, DEFAULT_LIMIT );
-        NewsLetterHome.removeOldUnconfirmed( nConfirmLimit, plugin );
+        NewsLetterHome.removeOldUnconfirmed( _nConfirmLimit, plugin );
         sbLogs.append( "\r\n[End] Duration : " + ( System.currentTimeMillis( ) - lDuration ) + " milliseconds\r\n" );
 
         return sbLogs.toString( );

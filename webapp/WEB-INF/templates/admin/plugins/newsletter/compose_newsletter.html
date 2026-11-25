@@ -1,45 +1,69 @@
+<#include "/admin/plugins/newsletter/newsletter_tabs.html" />
+<#assign openGenerateModalParams = { "data-bs-toggle": "modal", "data-bs-target": "#newsletter-generate" } />
+<#assign dismissModalParams = { "data-bs-dismiss": "modal" } />
+<#-- A datastore value of the library insert service, empty when the site has none -->
+<#macro libraryValue key><#local value = dskey( key )!'' /><#if !value?starts_with( 'DS Value' )>${value?json_string}</#if></#macro>
 <@pageContainer>
 	<@pageColumn>
-		<@pageHeader title='${newsletter.name}' />
-		<@tabs>
-			<@tabList>
-				<@tabLink href='jsp/admin/plugins/newsletter/ModifyNewsLetter.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.modify_newsletter.manageAttributes}' />
-				<@tabLink href='jsp/admin/plugins/newsletter/GetManageNewsletterTopics.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.manage_topics.pageTitle}' />
-				<@tabLink active=true href='jsp/admin/plugins/newsletter/ComposeNewsLetter.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.compose_newsletter.boxTitle}' />
-				<@link href='jsp/admin/plugins/newsletter/ManageSubscribers.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.manage_newsletters.columnTitleManageSubscribers}' linkIcon='users' class='nav-link ms-auto' />
-			</@tabList>
+		<@newsletterPageHeader newsletter=newsletter showSending=false />
+		<@tabs keepState=false>
+			<@newsletterTabs newsletter=newsletter activeTab='compose' />
 			<@tabContent>
-				<@tabPanel id='compose_newsletter' active=true>
-				<@messages errors=errors />
-				<@alert color='info' iconTitle='info-circle'>
-					<@span>#i18n{newsletter.modify_newsletter.dateLastSend} : </@span><strong class="ms-1">${newsletter.dateLastSending?date}</strong>
-					<@tform type='inline' class='w-75' action='jsp/admin/plugins/newsletter/ComposeNewsLetter.jsp'>
-						<@input type='hidden' name='newsletter_id' value='${newsletter.id}' />
-						<@input type='hidden' name='generate' value='' />
-						<@button type='submit' title='#i18n{newsletter.compose_newsletter.automaticGeneration}' buttonIcon='cog' color='primary' class='ms-auto' size='sm' hideTitle=['xs'] />
+				<@tabPanel id='newsletter-compose' active=true>
+					<@messages errors=errors![] />
+					<@newsletterTemplateMissing />
+					<@tform method='post' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp'>
+						<@input type='hidden' name='action' value='registerNewsLetter' />
+						<@input type='hidden' name='newsletter_id' value='${newsletter.id?c}' />
+						<@input type='hidden' name='newsletter_template_id' value='${newsletter_template_id}' />
+						<@div class='d-flex flex-wrap align-items-center gap-2 mb-3'>
+							<@p class='text-secondary mb-0 me-auto'><@icon style='calendar' class='me-1' />#i18n{newsletter.modify_newsletter.dateLastSend} : <strong>${newsletter.dateLastSending?date}</strong></@p>
+							<@button type='button' title='#i18n{newsletter.compose_newsletter.automaticGeneration}' buttonIcon='refresh' color='light' hideTitle=['xs'] params=openGenerateModalParams />
+							<@button name='compose_action' value='test_sending' type='submit' buttonIcon='mail-share' title='#i18n{newsletter.compose_newsletter.buttonTestSending}' color='light' hideTitle=['xs'] />
+							<@button name='compose_action' value='prepare_sending' type='submit' buttonIcon='send' title='#i18n{newsletter.compose_newsletter.buttonPrepareSending}' color='light' hideTitle=['xs'] />
+							<@button name='compose_action' value='register' type='submit' buttonIcon='device-floppy' title='#i18n{newsletter.compose_newsletter.buttonRegister}' color='primary' hideTitle=['xs'] />
+							<@button name='compose_action' value='cancel' type='submit' buttonIcon='x' color='light' title='#i18n{newsletter.compose_newsletter.buttonCancel}' hideTitle=['xs'] params={"formnovalidate": "formnovalidate"} />
+						</@div>
+						<#if lutece_editor>
+							<@input type='textarea' id='html_content' name='html_content' rows=30 richtext=true>${html_content}</@input>
+						<#else>
+							<@input type='textarea' id='html_content' name='html_content' class='d-none'>${html_content}</@input>
+						</#if>
 					</@tform>
-				</@alert>
-				<@tform method='post' action='jsp/admin/plugins/newsletter/DoRegisterNewsLetter.jsp' >
-					<@input type='hidden' name='newsletter_id' value='${newsletter.id}' />
-					<@input type='hidden' name='newsletter_template_id' value='${newsletter_template_id}' />
-					<@div class='d-flex justify-content-end align-items-center'>
-						<@btnGroup class='mb-3'>
-							<@button name='action' value='register' type='submit' buttonIcon='check me-2' title='#i18n{newsletter.compose_newsletter.buttonRegister}' color='primary' hideTitle=['xs'] />
-							<@button name='action' value='test_sending' type='submit' buttonIcon='share me-2' title='#i18n{newsletter.compose_newsletter.buttonTestSending}' hideTitle=['xs'] />
-							<@button name='action' value='prepare_sending' type='submit' buttonIcon='mail me-2' title='#i18n{newsletter.compose_newsletter.buttonPrepareSending}' hideTitle=['xs'] />
-							<@button name='action' value='cancel' type='submit' buttonIcon='x me-2' color='warning' title='#i18n{newsletter.compose_newsletter.buttonCancel}' hideTitle=['xs'] />
-						</@btnGroup>
-					</@div>
-					<@formGroup>
-						<@input type='textarea' id='html_content' name='html_content' rows=20 richtext=true>${html_content}</@input>
-					</@formGroup>
-				</@tform>
-							
+					<#if !lutece_editor>
+					<#assign grapesjsLibrary>{"imageType":"<@libraryValue key='library.insert_service_media_type_image' />","imageSpace":"<@libraryValue key='library.insert_service_media_type_image_space' />","pdfType":"<@libraryValue key='library.insert_service_media_type_pdf' />","pdfSpace":"<@libraryValue key='library.insert_service_media_type_pdf_space' />"}</#assign>
+					<#assign grapesjsParams = { "data-base-url": lutece_prod_url?has_content?then( lutece_prod_url, webapp_url!'' ), "data-insert": "newsletter-blog,library", "data-library": grapesjsLibrary?markup_string, "data-label-import-title": "#i18n{newsletter.compose_newsletter.editorImportTitle}", "data-label-import": "#i18n{newsletter.compose_newsletter.editorImportLabel}", "data-label-import-button": "#i18n{newsletter.compose_newsletter.editorImportButton}", "data-label-export-title": "#i18n{newsletter.compose_newsletter.editorExportTitle}", "data-label-export": "#i18n{newsletter.compose_newsletter.editorExportLabel}", "data-label-clear-canvas": "#i18n{newsletter.compose_newsletter.editorClearCanvas}" } />
+					<@div id='newsletter-grapesjs' class='border rounded' params=grapesjsParams></@div>
+					</#if>
 				</@tabPanel>
 			</@tabContent>
 		</@tabs>
-
+		<@modal id='newsletter-generate' size='sm'>
+			<@modalHeader modalTitle='#i18n{newsletter.compose_newsletter.confirmGenerateTitle}' />
+			<@modalBody>
+				<@p class='mb-0'>#i18n{newsletter.compose_newsletter.confirmGenerateText}</@p>
+			</@modalBody>
+			<@modalFooter>
+				<@button type='button' buttonIcon='x' title='#i18n{portal.util.labelCancel}' color='light' params=dismissModalParams />
+				<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=composeNewsLetter&newsletter_id=${newsletter.id?c}&generate=true' buttonIcon='refresh' title='#i18n{newsletter.compose_newsletter.generate}' color='warning' />
+			</@modalFooter>
+		</@modal>
 	</@pageColumn>
 </@pageContainer>
+<#if lutece_editor>
+<#assign newsletterEditorFile = .get_optional_template( '/admin/util/editor/editor_' + (newsletter_editor!'') + '.html' ) />
+<#if (newsletter_editor!'')?has_content && newsletterEditorFile.exists>
+<@newsletterEditorFile.include />
+<#else>
 <#include "/admin/util/editor/editor.html" />
-<@initEditor insert='"newsletter-blog"' config={"forced_root_block":"", "newline_behavior" : "linebreak"} />
+</#if>
+<@initEditor />
+<#else>
+<link rel="stylesheet" href="themes/admin/shared/plugins/newsletter/css/grapesjs/grapes.min.css">
+<link rel="stylesheet" href="themes/admin/shared/plugins/newsletter/css/newsletter-grapesjs.css">
+<script src="themes/admin/shared/js/editors/lutece-editor-insert.js"></script>
+<script src="themes/admin/shared/plugins/newsletter/js/grapesjs/grapes.min.js"></script>
+<script src="themes/admin/shared/plugins/newsletter/js/grapesjs/grapesjs-preset-newsletter.min.js"></script>
+<script src="themes/admin/shared/plugins/newsletter/js/grapesjs/locale/fr.js"></script>
+<script src="themes/admin/shared/plugins/newsletter/js/newsletter-grapesjs.js"></script>
+</#if>

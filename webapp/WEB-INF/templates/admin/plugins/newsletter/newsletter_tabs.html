@@ -1,0 +1,55 @@
+<#--
+Macro: newsletterPageHeader
+Description: page header shared by the screens of one newsletter: its name, a back link to the list and the sending entry.
+Parameters:
+- newsletter (NewsLetter): the newsletter displayed.
+- showSending (boolean, optional): false on a screen that has its own sending button, which saves the page first.
+Model: newsletter_allow_sending (boolean, optional).
+-->
+<#macro newsletterPageHeader newsletter showSending=true>
+<@pageHeader title='${newsletter.name}'>
+	<#if showSending && newsletter_allow_sending!false>
+		<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=prepareNewsLetter&newsletter_id=${newsletter.id?c}' title='#i18n{newsletter.manage_newsletters.columnTitlePrepareSending}' buttonIcon='send' hideTitle=['xs','sm'] class='me-1' />
+	</#if>
+	<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' title='#i18n{portal.util.labelBack}' buttonIcon='arrow-left' color='light' hideTitle=['xs','sm'] />
+</@pageHeader>
+</#macro>
+
+<#--
+Macro: newsletterTabs
+Description: tab list shared by the screens of one newsletter. Each tab is a link to its own page; the current one is marked active.
+Parameters:
+- newsletter (NewsLetter): the newsletter displayed.
+- activeTab (string): settings, content, compose, subscribers or archive.
+Model: newsletter_allow_modification, newsletter_allow_manage_subscribers, newsletter_allow_manage_archive (boolean, optional), newsletter_count_subscribers (number, optional).
+-->
+<#macro newsletterTabs newsletter activeTab>
+<@tabList>
+	<#if newsletter_allow_modification!false>
+		<@tabLink active=(activeTab=='settings') href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=modifyNewsLetter&newsletter_id=${newsletter.id?c}' title='#i18n{newsletter.newsletter_tabs.tabSettings}' tabIcon='adjustments' />
+		<@tabLink active=(activeTab=='content') href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=manageNewsletterTopics&newsletter_id=${newsletter.id?c}' title='#i18n{newsletter.newsletter_tabs.tabContent}' tabIcon='layout-rows' />
+		<@tabLink active=(activeTab=='compose') href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=composeNewsLetter&newsletter_id=${newsletter.id?c}' title='#i18n{newsletter.newsletter_tabs.tabCompose}' tabIcon='pencil' />
+	</#if>
+	<#if newsletter_allow_manage_subscribers!false>
+		<@tabLink active=(activeTab=='subscribers') href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=manageSubscribers&newsletter_id=${newsletter.id?c}' title='#i18n{newsletter.newsletter_tabs.tabSubscribers}' tabIcon='users'>
+			<#if newsletter_count_subscribers??><@tag color='blue-lt' class='ms-2'>${newsletter_count_subscribers}</@tag></#if>
+		</@tabLink>
+	</#if>
+	<#if newsletter_allow_manage_archive!false>
+		<@tabLink active=(activeTab=='archive') href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=manageArchive&newsletter_id=${newsletter.id?c}' title='#i18n{newsletter.newsletter_tabs.tabArchive}' tabIcon='archive' />
+	</#if>
+</@tabList>
+</#macro>
+
+<#--
+Macro: newsletterTemplateMissing
+Description: warning shown when the file of the template of the newsletter is missing from the folder of the newsletter templates
+(WEB-INF/templates/skin/plugins/newsletter/templates): the content cannot be generated from it.
+Model: newsletter_template_missing (string, optional): the name of the missing template.
+-->
+<#macro newsletterTemplateMissing>
+<#if newsletter_template_missing??>
+	<#assign missingTemplateName = ( newsletter_template_missing ) />
+	<@alert color='warning' iconTitle='alert-triangle' title='#i18n{newsletter.message.newsletterTemplateMissing}'>${missingTemplateName}</@alert>
+</#if>
+</#macro>

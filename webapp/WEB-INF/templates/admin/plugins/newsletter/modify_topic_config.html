@@ -1,16 +1,19 @@
 <@pageContainer>
     <@pageColumn>
-        <@pageHeader title='#i18n{newsletter.modify_topic_config.modifyConfigTitle}' />
-		<@tform action='jsp/admin/plugins/newsletter/DoModifyNewsletterTopicConfig.jsp' boxed=true >
-			<@input type='hidden' name='newsletter_id' value='${topic.idNewsletter}' />
-			<@input type='hidden' name='topic_id' value='${topic.id}' />
+        <@pageHeader title='#i18n{newsletter.modify_topic_config.modifyConfigTitle}' description='${topic.title!}'>
+			<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=manageNewsletterTopics&newsletter_id=${topic.idNewsletter?c}' buttonIcon='arrow-left' title='#i18n{portal.util.labelBack}' color='light' hideTitle=['xs','sm'] />
+		</@pageHeader>
+		<@tform method='post' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' boxed=true >
+			<@input type='hidden' name='action' value='modifyTopicConfig' />
+			<@input type='hidden' name='newsletter_id' value='${topic.idNewsletter?c}' />
+			<@input type='hidden' name='topic_id' value='${topic.id?c}' />
 			<@formGroup labelFor='title' labelKey='#i18n{newsletter.modify_topic_config.topicTitle}'>
 				<@input type='text' name='title' id='title' value='${topic.title!}' />
 			</@formGroup>
 			${content!}
 			<@formGroup>
-				<@button type='submit' title='#i18n{portal.util.labelValidate}' buttonIcon='check' />
-				<@button type='submit' name='cancel' title='#i18n{portal.util.labelCancel}' buttonIcon='times' cancel=true />
+				<@button type='submit' title='#i18n{portal.util.labelValidate}' buttonIcon='check' color='primary' />
+				<@button type='submit' name='cancel' title='#i18n{portal.util.labelCancel}' buttonIcon='x' color='light' params={"formnovalidate": "formnovalidate"} />
 			</@formGroup>
 		</@tform>
 	</@pageColumn>

@@ -36,8 +36,10 @@ package fr.paris.lutece.plugins.newsletter.business;
 import fr.paris.lutece.portal.service.plugin.Plugin;
 import jakarta.enterprise.inject.spi.CDI;
 
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * This class provides instances management methods (create, find, ...) for SendingNewsLetter objects
@@ -168,5 +170,19 @@ public final class SendingNewsLetterHome
     public static ArrayList<SendingNewsLetter> findSendingsByIds( ArrayList<Integer> listId, Plugin plugin )
     {
         return _dao.findSendingsByIds( listId, plugin );
+    }
+
+    /**
+     * Reads the sending statistics of every newsletter: number of sendings, number of sendings made from a given date, date of the last sending
+     * 
+     * @param dateRecent
+     *            the date from which a sending counts as recent
+     * @param plugin
+     *            the Plugin
+     * @return the statistics keyed by newsletter identifier; a newsletter never sent is absent
+     */
+    public static Map<Integer, SendingStatistics> findSendingStatisticsByNewsletter( Timestamp dateRecent, Plugin plugin )
+    {
+        return _dao.selectSendingStatisticsByNewsletter( dateRecent, plugin );
     }
 }

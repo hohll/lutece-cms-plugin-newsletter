@@ -80,7 +80,6 @@ public class NewsLetterSubscriptionPortlet extends PortletHtmlContent
     private static final String PARAMETER_EMAIL_ERROR = "email-error";
     private static final String PARAMETER_NO_NEWSLETTER_CHOSEN = "nochoice-error";
 
-    private static final String JCAPTCHA_PLUGIN = "jcaptcha";
 
     /**
      * Comparator for sorting - last sending date descending order, newsletters never sent last
@@ -93,7 +92,7 @@ public class NewsLetterSubscriptionPortlet extends PortletHtmlContent
      */
     public NewsLetterSubscriptionPortlet( )
     {
-        setPortletTypeId( NewsLetterSubscriptionPortletHome.getInstance( ).getPortletTypeId( ) );
+        setPortletTypeId( CDI.current( ).select( NewsLetterSubscriptionPortletHome.class ).get( ).getPortletTypeId( ) );
     }
 
     /**
@@ -112,7 +111,7 @@ public class NewsLetterSubscriptionPortlet extends PortletHtmlContent
 
         if ( properties != null )
         {
-            if ( properties.isCaptchaActive( ) && PluginService.isPluginEnable( JCAPTCHA_PLUGIN ) )
+            if ( properties.isCaptchaActive( ) )
             {
                 Instance<ICaptchaService> captchaInstance = CDI.current( ).select( ICaptchaService.class, NamedLiteral.of( BeanUtils.BEAN_CAPTCHA_SERVICE ) );
 
@@ -176,7 +175,7 @@ public class NewsLetterSubscriptionPortlet extends PortletHtmlContent
      */
     public void update( )
     {
-        NewsLetterSubscriptionPortletHome.getInstance( ).update( this );
+        CDI.current( ).select( NewsLetterSubscriptionPortletHome.class ).get( ).update( this );
     }
 
     /**
@@ -185,6 +184,6 @@ public class NewsLetterSubscriptionPortlet extends PortletHtmlContent
     @Override
     public void remove( )
     {
-        NewsLetterSubscriptionPortletHome.getInstance( ).remove( this );
+        CDI.current( ).select( NewsLetterSubscriptionPortletHome.class ).get( ).remove( this );
     }
 }

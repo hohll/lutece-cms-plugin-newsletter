@@ -33,14 +33,28 @@
  */
 package fr.paris.lutece.plugins.newsletter.business;
 
+import org.apache.commons.lang3.StringUtils;
+
 /**
  * This class represents business NewsLetterProperties Object
  */
 public class NewsLetterProperties
 {
+    /**
+     * The editor of the composition of the newsletters: GrapesJS, the visual email builder shipped with the plugin
+     */
+    public static final String EDITOR_GRAPESJS = "grapesjs";
+
+    /**
+     * The editor of the composition of the newsletters: the rich text editor of the back office of the site, with its profile for the newsletter
+     * plugin. Any other value but {@link #EDITOR_GRAPESJS} names a rich text editor of the back office chosen for the newsletters.
+     */
+    public static final String EDITOR_LUTECE = "lutece";
+
     private boolean _bIsValidationActive;
     private boolean _bIsCaptchaActive;
     private String _strTermOfService;
+    private String _strEditor = EDITOR_GRAPESJS;
 
     /**
      *
@@ -105,5 +119,36 @@ public class NewsLetterProperties
     public void setTOS( String strTermOfService )
     {
         _strTermOfService = strTermOfService;
+    }
+
+    /**
+     * Returns the editor of the composition of the newsletters
+     *
+     * @return {@link #EDITOR_GRAPESJS}, {@link #EDITOR_LUTECE} or the name of a rich text editor of the back office
+     */
+    public String getEditor( )
+    {
+        return _strEditor;
+    }
+
+    /**
+     * Sets the editor of the composition of the newsletters. No value selects GrapesJS.
+     *
+     * @param strEditor
+     *            {@link #EDITOR_GRAPESJS}, {@link #EDITOR_LUTECE} or the name of a rich text editor of the back office
+     */
+    public void setEditor( String strEditor )
+    {
+        _strEditor = StringUtils.isBlank( strEditor ) ? EDITOR_GRAPESJS : strEditor.trim( );
+    }
+
+    /**
+     * Tells whether the newsletters are composed with a rich text editor of the back office
+     *
+     * @return true for a rich text editor of the back office, false for GrapesJS
+     */
+    public boolean isLuteceEditor( )
+    {
+        return !EDITOR_GRAPESJS.equals( _strEditor );
     }
 }

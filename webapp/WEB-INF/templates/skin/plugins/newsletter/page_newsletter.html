@@ -20,12 +20,12 @@
 				</@cField>
 				<@cFieldset legend='#i18n{newsletter.page_newsletter.labelChooseNewsletters}'>	
 					<#list (newsletters_list![]) as newsletter>
-						<@cCheckbox label=newsletter.name! name='newsletter_id' id='newsletter_id_${newsletter.id}' value=newsletter.id?string />
+						<@cCheckbox label=newsletter.name! name='newsletter_id' id='newsletter_id_${newsletter.id?c}' value=newsletter.id?c />
 					</#list>
 				</@cFieldset>
 				<#if properties.TOS??>
 				<@cField class='d-flex align-items-center gap-2'>
-					<@cCheckbox label='#i18n{newsletter.page_newsletter.requirement}' name='tos' value='1' for='tos' required=true />
+					<@cCheckbox label='#i18n{newsletter.page_newsletter.requirement}' name='tos' id='tos' value='1' required=true />
 					<@cBtn class='primary btn-sm' type='button' label='#i18n{newsletter.page_newsletter.tos.header}' params={"data-bs-toggle": "modal", "data-bs-target": "#modalRequirementModal"} />
 				</@cField>
 				</#if>

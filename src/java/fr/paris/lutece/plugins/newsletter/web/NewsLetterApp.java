@@ -57,7 +57,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
-import jakarta.enterprise.context.SessionScoped;
+import jakarta.enterprise.context.RequestScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -69,7 +69,7 @@ import static fr.paris.lutece.portal.service.admin.AdminUserService.getLocale;
 /**
  * This XPage handles the newsletter subscription, and the newsletter archives.
  */
-@SessionScoped
+@RequestScoped
 @Named( "newsletter.xpage.newsletter" )
 public class NewsLetterApp implements XPageApplication
 {
@@ -95,17 +95,16 @@ public class NewsLetterApp implements XPageApplication
     private static final String PARAMETER_VIEW_REQUIREMENT = "view_requirement";
 
     // Constants
-    private static final String JCAPTCHA_PLUGIN = "jcaptcha";
 
     @Inject
     @Named( BeanUtils.BEAN_CAPTCHA_SERVICE )
-    private transient Instance<ICaptchaService> _captchaService;
+    private Instance<ICaptchaService> _captchaService;
 
     @Inject
-    private transient NewsLetterRegistrationService _registrationService;
+    private NewsLetterRegistrationService _registrationService;
 
     @Inject
-    private transient NewsLetterArchiveService _archiveService;
+    private NewsLetterArchiveService _archiveService;
 
     /**
      * Init method kept for backward compatibility with the XPageApplication contract.
@@ -198,10 +197,10 @@ public class NewsLetterApp implements XPageApplication
             model.put( MARK_TOS, properties.getTOS( ) );
             model.put( MARK_PLUGIN, plugin );
 
-            boolean bIsCaptchaEnabled = PluginService.isPluginEnable( JCAPTCHA_PLUGIN );
+            boolean bIsCaptchaEnabled = _captchaService.isResolvable( );
             model.put( MARK_IS_ACTIVE_CAPTCHA, bIsCaptchaEnabled );
 
-            if ( bIsCaptchaEnabled && _captchaService.isResolvable( ) )
+            if ( bIsCaptchaEnabled )
             {
                 model.put( MARK_CAPTCHA, HtmlMarkup.of( _captchaService.get( ).getHtmlCode( ) ) );
             }

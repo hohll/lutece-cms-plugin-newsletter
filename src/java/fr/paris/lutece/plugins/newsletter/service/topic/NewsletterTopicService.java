@@ -259,6 +259,27 @@ public class NewsletterTopicService implements Serializable
     }
 
     /**
+     * Get the summary of the configuration of a topic
+     *
+     * @param newsletterTopic
+     *            The topic
+     * @param locale
+     *            The locale
+     * @return The summary given by the service of the topic type, or null if it gives none
+     */
+    public String getConfigurationSummary( NewsletterTopic newsletterTopic, Locale locale )
+    {
+        for ( INewsletterTopicService service : _topicServices )
+        {
+            if ( Objects.equals( service.getNewsletterTopicTypeCode( ), newsletterTopic.getTopicTypeCode( ) ) )
+            {
+                return service.getConfigurationSummary( newsletterTopic, locale );
+            }
+        }
+        return null;
+    }
+
+    /**
      * Get the name of the topic type from a topic type code
      * 
      * @param strTopicTypeCode

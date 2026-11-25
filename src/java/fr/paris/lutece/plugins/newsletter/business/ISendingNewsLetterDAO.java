@@ -35,8 +35,10 @@ package fr.paris.lutece.plugins.newsletter.business;
 
 import fr.paris.lutece.portal.service.plugin.Plugin;
 
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The skeleton data access methods for SendingNewsletter
@@ -126,4 +128,15 @@ public interface ISendingNewsLetterDAO
      * @return the last sending for the given newsletter id - null if no sending found
      */
     List<SendingNewsLetter> selectAllLastSendingForNewsletterId( int newsletterId, Plugin plugin );
+
+    /**
+     * Reads the sending statistics of every newsletter: number of sendings, number of sendings made from a given date, date of the last sending
+     * 
+     * @param dateRecent
+     *            the date from which a sending counts as recent
+     * @param plugin
+     *            the Plugin
+     * @return the statistics keyed by newsletter identifier; a newsletter never sent is absent
+     */
+    Map<Integer, SendingStatistics> selectSendingStatisticsByNewsletter( Timestamp dateRecent, Plugin plugin );
 }

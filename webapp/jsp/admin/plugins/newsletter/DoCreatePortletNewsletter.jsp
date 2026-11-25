@@ -1,10 +1,6 @@
 <%@ page errorPage="../../ErrorPage.jsp" %>
 
-<jsp:useBean id="portletNewsletter" scope="session" class="fr.paris.lutece.plugins.newsletter.web.portlet.NewsLetterArchivePortletJspBean" />
+<%@page import="fr.paris.lutece.plugins.newsletter.web.portlet.NewsLetterArchivePortletJspBean"%>
 
-<% portletNewsletter.init( request, portletNewsletter.RIGHT_MANAGE_ADMIN_SITE ); %>
-<%
-	response.sendRedirect( portletNewsletter.doCreate( request ) );
-%>
-
-
+${ newsletterArchivePortletJspBean.init( pageContext.request, NewsLetterArchivePortletJspBean.RIGHT_MANAGE_ADMIN_SITE ) }
+${ pageContext.response.sendRedirect( newsletterArchivePortletJspBean.doCreate( pageContext.request ) ) }

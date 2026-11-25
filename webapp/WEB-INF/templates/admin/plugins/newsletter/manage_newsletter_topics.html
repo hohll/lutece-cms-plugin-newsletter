@@ -1,143 +1,416 @@
+<style>.newsletter-w-4rem{width:4rem}.newsletter-sticky-1rem{top:1rem}.newsletter-mh-75vh{max-height:75vh}</style>
+<#include "/admin/plugins/newsletter/newsletter_tabs.html" />
+<#include "/admin/plugins/newsletter/template_picture.html" />
+<#assign openTemplateModalParams = { "data-bs-toggle": "modal", "data-bs-target": "#newsletter-template-choose" } />
+<#assign dismissModalParams = { "data-bs-dismiss": "modal" } />
+<#assign previewDesktopParams = { "data-preview-width": "100%", "aria-pressed": "true" } />
+<#assign previewMobileParams = { "data-preview-width": "390px", "aria-pressed": "false" } />
+<#assign previewOutlineParams = { "aria-pressed": "true" } />
 <@pageContainer>
 	<@pageColumn>
-		<@pageHeader title=newsletter.name />
-		<@tabs>
-			<@tabList>
-				<@tabLink href='jsp/admin/plugins/newsletter/ModifyNewsLetter.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.modify_newsletter.manageAttributes}' />
-				<@tabLink active=true href='jsp/admin/plugins/newsletter/GetManageNewsletterTopics.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.manage_topics.pageTitle}' />
-				<@tabLink href='jsp/admin/plugins/newsletter/ComposeNewsLetter.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.compose_newsletter.boxTitle}' />
-				<@link href='jsp/admin/plugins/newsletter/ManageSubscribers.jsp?newsletter_id=${newsletter.id}' title='#i18n{newsletter.manage_newsletters.columnTitleManageSubscribers}' linkIcon='users' class='nav-link ms-auto' />
-			</@tabList>
+		<@newsletterPageHeader newsletter=newsletter />
+		<@tabs keepState=false>
+			<@newsletterTabs newsletter=newsletter activeTab='content' />
 			<@tabContent>
-				<@tabPanel id='manage_topics' active=true>
-				<@alert color='info' iconTitle='info-circle'>
-					<@span>#i18n{newsletter.modify_newsletter.dateLastSend} : </@span><strong class="ms-1">${newsletter.dateLastSending?date}</strong>
-				</@alert>
-				<@row>
-					<@columns sm=2>
-						<@box>
-							<@boxHeader title='#i18n{newsletter.manage_topics.labelSelectNewsletterTemplate}' />
-							<@boxBody>
-							<@tform method='post' action='jsp/admin/plugins/newsletter/GetManageNewsletterTopics.jsp'>
-							<@input type='hidden' name='newsletter_id' value='${newsletter.id}' />
-							<@input type='hidden' name='update_template' value='true' />
-							<@fieldSet legend='#i18n{newsletter.manage_topics.labelSelectNewsletterTemplate}' hideLegend=['all'] >
-								<#if newsletter_templates?has_content>
-									<#assign nIndex=1>
-									<@ul class='list-unstyled'>
-                                <#assign templateIterator=0>
-									<#list newsletter_templates as template >
-                                         <@li>
-											<@radioButton labelFor='newsletter_template_id_${nIndex}' labelClass='ps-0' class='radio-image' id='newsletter_template_id_${nIndex}' name='newsletter_template_id' value='${template.id}' checked=template.id=newsletter_template_id >
-                                            <#assign templateImage=template_image_list[templateIterator]!>
-											<#assign templateIterator=templateIterator+1>
-												<#if templateImage?? && templateImage != "">
-												<@img url='data:image/jpeg;base64,${templateImage!}' class='img-fluid img-thumbnail thumbnail-sm' alt='${template.description}' title='#i18n{newsletter.compose_newsletter.newsletterTemplate}' />
-												<#else>
-												<@img url='${img_path}/${template.pictureKey}' class='img-fluid img-thumbnail thumbnail-sm' alt='${template.description}' title='#i18n{newsletter.compose_newsletter.newsletterTemplate}' />
-                                                </#if>
-                                              ${template.description}
-											</@radioButton>
-										</@li>
-										<#assign nIndex=nIndex+1>
-									</#list>
-									</@ul>
-								<#else>
-									<@alert color='warning'>#i18n{newsletter.compose_newsletter.noNewsletterTemplate}</@alert>
+				<@tabPanel id='newsletter-content' active=true>
+					<@newsletterTemplateMissing />
+					<#if 0 < newsletter_template_id>
+						<@row>
+							<@columns lg=7>
+								<@templateSummary />
+								<#list 1..newsletter.nbSections as section>
+									<@sectionBox section=section />
+								</#list>
+								<#assign outOfSectionTopics=topics_list?filter(t -> t.section < 1 || t.section > newsletter.nbSections)>
+								<#if outOfSectionTopics?has_content>
+									<@box color='warning'>
+										<@boxHeader title='#i18n{newsletter.manage_topics.labelOutOfSection}' />
+										<@boxBody>
+											<@p class='text-secondary mb-0'>#i18n{newsletter.manage_topics.helpOutOfSection}</@p>
+										</@boxBody>
+										<@listGroup class='list-group-flush'>
+											<#list outOfSectionTopics as topic>
+												<@topicItem topic=topic movable=false />
+											</#list>
+										</@listGroup>
+									</@box>
 								</#if>
-								<@button type='submit' buttonIcon='check me-1' title='#i18n{portal.util.labelSelect}' />
-							</@fieldSet>
-							</@tform>
-							</@boxBody>
-						</@box>
-					</@columns>
-					<@columns sm=5>
+							</@columns>
+							<@columns lg=5>
+								<@previewBox />
+							</@columns>
+						</@row>
+						<@addTopicModal />
+					<#else>
 						<@box>
-							<@boxHeader title='#i18n{newsletter.manage_topics.labelTopicManageTitle}' />
 							<@boxBody>
-							<#if 0 < newsletter_template_id>
-							<@tform formStyle='inline' action='jsp/admin/plugins/newsletter/DoAddNewsletterTopic.jsp'>
-								<@input type='hidden' name='newsletter_id' id='newsletter_id' value='${newsletter.id}' />
-								<@row>
-									<@columns sm=12 md=5>
-										<@formGroup labelFor='topic_type' labelKey='#i18n{newsletter.manage_topics.labelTopicType}' rows=2>
-											<@select name='topic_type' items=list_topic_types default_value='' />
-										</@formGroup>
-									</@columns>
-									<#if 1 < newsletter.nbSections>
-									<@columns sm=12 md=3>
-										<@formGroup labelFor='topic_section_number' labelKey='#i18n{newsletter.manage_topics.labelSectionNumber}' rows=2>
-											<@select name='topic_section_number'>
-												<#list 1..newsletter.nbSections as i>
-													<@option value=i label=i />
-												</#list>
-											</@select>
-										</@formGroup>
-									</@columns>
-									<#else>
-									<@input type='hidden' name='topic_section_number' value='1' />
-									</#if>
-									<@columns sm=12 md=4>
-										<@formGroup rows=2>
-											<@button type='submit' class='mt-4 form-validation' title='#i18n{newsletter.manage_topics.labelAddTopic}' buttonIcon='plus' title='#i18n{newsletter.manage_topics.labelAddTopic}' hideTitle=['xs'] />
-										</@formGroup>
-									</@columns>
-								</@row>
-							</@tform>
-							<@dataTable dataTableManager=table_manager actionMacro="getActionColumn" />
-							</#if>
+								<@empty title='#i18n{newsletter.manage_topics.labelChooseTemplateFirst}' subtitle='#i18n{newsletter.manage_topics.helpChooseTemplateFirst}' iconName='template' />
+								<@div class='text-center mb-3'>
+									<@button type='button' title='#i18n{newsletter.manage_topics.labelSelectNewsletterTemplate}' buttonIcon='template' color='primary' params=openTemplateModalParams />
+								</@div>
 							</@boxBody>
 						</@box>
-					</@columns>
-					<@columns sm=5>
-						<#if html_content?? && html_content?has_content>
-						<@box>
-							<@boxHeader title='#i18n{newsletter.manage_topics.labelPreview}' />
-							<@boxBody id='preview'>
-								${html_content!}
-							</@boxBody>
-						</@box>
-						</#if>
-					</@columns>
-				</@row>
+					</#if>
+					<@templateModal />
 				</@tabPanel>
 			</@tabContent>
 		</@tabs>
 	</@pageColumn>
 </@pageContainer>
-<style>
-.table th:nth-child(2),	
-.table td:nth-child(2){
-	display: none;
-}	
-</style>
-<#macro getActionColumn item>
-<@aButton title='#i18n{portal.util.labelModify}' href='jsp/admin/plugins/newsletter/GetModifyTopicConfig.jsp?newsletter_id=${item.idNewsletter}&topic_id=${item.id}' buttonIcon='pencil' size='' hideTitle=['all'] params={'aria-label': '#i18n{portal.util.labelModify} ' + item.title!} />
-<#if 1< item.order >
-	<@aButton title='#i18n{newsletter.manage_topics.labelUp}' href='jsp/admin/plugins/newsletter/DoMoveNewsletterTopic.jsp?newsletter_id=${item.idNewsletter}&topic_id=${item.id}&move_up=true' buttonIcon='chevron-up' size='' hideTitle=['all'] params={'aria-label': '#i18n{newsletter.manage_topics.labelUp} ' + item.title!} />
-</#if>
-<#if item.order < section_size[item.section - 1]>
-	<@aButton title='#i18n{newsletter.manage_topics.labelDown}' href='jsp/admin/plugins/newsletter/DoMoveNewsletterTopic.jsp?newsletter_id=${item.idNewsletter}&topic_id=${item.id}&move_up=false' buttonIcon='chevron-down' hideTitle=['all'] size='' params={'aria-label': '#i18n{newsletter.manage_topics.labelDown} ' + item.title!} />
-</#if>
-<@aButton title='#i18n{portal.util.labelDelete}' href='jsp/admin/plugins/newsletter/ConfirmRemoveNewsletterTopic.jsp?newsletter_id=${item.idNewsletter}&topic_id=${item.id}' color='danger' buttonIcon='trash' hideTitle=['all'] size='' params={'aria-label': '#i18n{portal.util.labelDelete} ' + item.title!} />
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+	// The add topic modal is opened from a section: it receives the section of the button
+	const addTopicModal = document.getElementById('newsletter-topic-add');
+	if (addTopicModal) {
+		addTopicModal.addEventListener('show.bs.modal', function(event) {
+			const section = event.relatedTarget && event.relatedTarget.dataset.section;
+			if (section) {
+				document.getElementById('topic_section_number').value = section;
+				const label = document.getElementById('newsletter-topic-add-section');
+				if (label) {
+					label.textContent = section;
+				}
+			}
+		});
+	}
+
+	const frame = document.getElementById('newsletter-preview');
+	if (!frame) {
+		return;
+	}
+	const scroller = frame.parentElement;
+	const topicStyle = '[data-newsletter-topic]{transition:background-color .15s}'
+		+ '[data-newsletter-topic].newsletter-topic-highlight{background-color:#fff6d6}';
+	const outlineStyle = '[data-newsletter-section]{outline:1px dashed #9db2ff;outline-offset:-3px}';
+	let outlined = true;
+
+	function previewDocument() {
+		return frame.contentDocument;
+	}
+	function resize() {
+		const doc = previewDocument();
+		if (doc && doc.documentElement) {
+			frame.style.height = doc.documentElement.scrollHeight + 'px';
+		}
+	}
+	function applyStyle() {
+		const doc = previewDocument();
+		if (!doc || !doc.head) {
+			return;
+		}
+		let style = doc.getElementById('newsletter-preview-style');
+		if (!style) {
+			style = doc.createElement('style');
+			style.id = 'newsletter-preview-style';
+			doc.head.appendChild(style);
+		}
+		style.textContent = topicStyle + (outlined ? outlineStyle : '');
+	}
+	frame.addEventListener('load', function() {
+		applyStyle();
+		resize();
+	});
+
+	document.querySelectorAll('[data-preview-width]').forEach(function(button, index, buttons) {
+		button.addEventListener('click', function() {
+			frame.style.width = button.dataset.previewWidth;
+			buttons.forEach(function(other) {
+				other.classList.toggle('active', other === button);
+				other.setAttribute('aria-pressed', other === button ? 'true' : 'false');
+			});
+			resize();
+		});
+	});
+
+	const outlineButton = document.getElementById('preview_outline');
+	outlineButton.addEventListener('click', function() {
+		outlined = !outlined;
+		outlineButton.classList.toggle('active', outlined);
+		outlineButton.setAttribute('aria-pressed', outlined ? 'true' : 'false');
+		applyStyle();
+	});
+
+	// A topic of the list is highlighted in the preview, which scrolls to it when it is out of sight
+	document.querySelectorAll('[data-topic-id]').forEach(function(item) {
+		function highlight(on) {
+			const doc = previewDocument();
+			const target = doc && doc.querySelector('[data-newsletter-topic="' + item.dataset.topicId + '"]');
+			if (!target) {
+				return;
+			}
+			target.classList.toggle('newsletter-topic-highlight', on);
+			if (on) {
+				const top = target.getBoundingClientRect().top;
+				if (top < scroller.scrollTop || top > scroller.scrollTop + scroller.clientHeight - 40) {
+					scroller.scrollTo({ top: Math.max(top - 40, 0), behavior: 'smooth' });
+				}
+			}
+		}
+		item.addEventListener('mouseenter', function() { highlight(true); });
+		item.addEventListener('mouseleave', function() { highlight(false); });
+		item.addEventListener('focusin', function() { highlight(true); });
+		item.addEventListener('focusout', function() { highlight(false); });
+	});
+});
+</script>
+<#--
+Macro: templateSummary
+Description: the template of the newsletter, with the button that opens the choice of another one, and the period covered by the automatic topics.
+-->
+<#macro templateSummary>
+	<#local currentTemplates=newsletter_templates?filter(t -> t.id == newsletter_template_id)>
+	<@box>
+		<@boxBody>
+			<@div class='d-flex align-items-center gap-3'>
+				<#if currentTemplates?has_content>
+					<#local currentTemplate=currentTemplates[0]>
+					<#local currentTemplateLabel = ( currentTemplate.description!'' ) />
+					<@div class='flex-shrink-0 newsletter-w-4rem'>
+						<@templatePicture imgPath=img_path!'' pictures=available_pictures![] alt=currentTemplateLabel pictureKey=currentTemplate.pictureKey!'' class='img-fluid img-thumbnail' placeholderClass='img-thumbnail py-3' />
+					</@div>
+				</#if>
+				<@div class='flex-fill'>
+					<@div class='subheader'>#i18n{newsletter.manage_topics.labelTemplate}</@div>
+					<@div class='fw-bold'>
+						<#if currentTemplates?has_content>${currentTemplateLabel}</#if>
+						<#if (missing_template_ids![])?seq_contains(newsletter_template_id)><@tag color='danger-lt' class='ms-1' tagIcon='alert-triangle'>#i18n{newsletter.manage_templates.templateMissingShort}</@tag></#if>
+					</@div>
+					<@div class='small text-secondary'>${newsletter.nbSections} #i18n{newsletter.manage_topics.labelSections} · ${topics_list?size} #i18n{newsletter.manage_topics.labelTopics}</@div>
+				</@div>
+				<@button type='button' title='#i18n{newsletter.manage_topics.labelChangeTemplate}' buttonIcon='template' color='light' hideTitle=['xs'] params=openTemplateModalParams />
+			</@div>
+		</@boxBody>
+		<@div class='card-footer bg-body-tertiary d-flex align-items-center gap-2 small'>
+			<@icon style='calendar' />
+			<@span>#i18n{newsletter.manage_topics.labelPeriod} <strong>${date_last_sending!}</strong>#i18n{newsletter.manage_topics.labelPeriodEnd}</@span>
+			<#if newsletter_allow_modification!false>
+				<a class="ms-auto text-nowrap" href="jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=modifyNewsLetter&newsletter_id=${newsletter.id?c}">#i18n{newsletter.manage_topics.labelChangeDate}</a>
+			</#if>
+		</@div>
+	</@box>
 </#macro>
-<#macro getSectionColumn item>
-<#if 1 < newsletter.nbSections>
-<@tform action='jsp/admin/plugins/newsletter/DoChangeNewsletterTopicSection.jsp'>
-	<@input type='hidden' name='newsletter_id' id='newsletter_id' value='${newsletter.id}' />
-	<@input type='hidden' name='topic_id' id='topic_id' value='${item.id}' />
-	<@formGroup>
-		<@inputGroup>
-			<@select name='topic_section_number'>
-			<#list 1..newsletter.nbSections as i>
-				<@option value=i selected=(i=item.section) label=i />
-			</#list>
-			</@select>
-			<@button type='submit' title='#i18n{newsletter.manage_topics.labelChangeTopicSection}' hideTitle=['all'] buttonIcon='arrows-sort' size='' />
-		</@inputGroup>
-	</@formGroup>
-</@tform>
-<#else>
-${item.section}
-</#if>
+<#--
+Macro: sectionBox
+Description: one section of the template, with its topics in their order and the button that adds a topic to it.
+Parameters:
+- section (number): the number of the section, from 1.
+-->
+<#macro sectionBox section>
+	<#local sectionTopics=topics_list?filter(t -> t.section == section)>
+	<#local openTopicModalParams = { "data-bs-toggle": "modal", "data-bs-target": "#newsletter-topic-add", "data-section": "${section}" } />
+	<@box>
+		<@boxHeader title='#i18n{newsletter.manage_topics.labelTopicSection} ${section}'>
+			<@button type='button' title='#i18n{newsletter.manage_topics.labelAddTopic}' buttonIcon='plus' color='light' size='sm' hideTitle=['xs'] params=openTopicModalParams />
+		</@boxHeader>
+		<#if sectionTopics?has_content>
+			<@listGroup class='list-group-flush'>
+				<#list sectionTopics as topic>
+					<@topicItem topic=topic movable=true />
+				</#list>
+			</@listGroup>
+		<#else>
+			<@boxBody>
+				<@div class='border border-dashed rounded p-3 text-center text-secondary'>
+					<@p class='mb-2'>#i18n{newsletter.manage_topics.noTopic}</@p>
+					<@button type='button' title='#i18n{newsletter.manage_topics.labelAddFirstTopic}' buttonIcon='plus' color='primary' size='sm' params=openTopicModalParams />
+				</@div>
+			</@boxBody>
+		</#if>
+	</@box>
+</#macro>
+<#--
+Macro: topicItem
+Description: one topic of the newsletter: its reorder arrows, its type, its status and the summary of its configuration, the button that configures
+it and the menu of its other actions (move to another section, remove).
+Parameters:
+- topic (NewsletterTopic): the topic.
+- movable (boolean): false for a topic whose section is beyond the sections of the template; it has no position to move within, and is moved by
+  a list of the sections.
+Model: topic_status (map of topic id to ok, empty or unconfigured), topic_summaries (map of topic id to text).
+-->
+<#macro topicItem topic movable>
+	<#local topicKey=topic.id?c>
+	<#local status=(topic_status[topicKey])!'ok'>
+	<#local topicTitle = ( topic.title!'' ) />
+	<#local topicSummary = ( (topic_summaries[topicKey])!'' ) />
+	<#local topicItemParams = { "data-topic-id": "${topicKey}" } />
+	<#switch topic.topicTypeCode!>
+		<#case 'NEWSLETTER_BLOG'><#local typeIcon='article'><#break>
+		<#case 'NEWSLETTER_DOCUMENT'><#local typeIcon='file-text'><#break>
+		<#case 'FREE_HTML'><#local typeIcon='typography'><#break>
+		<#default><#local typeIcon='layout-rows'>
+	</#switch>
+	<@listGroupItem params=topicItemParams>
+		<@row class='align-items-center g-2 flex-nowrap'>
+			<#if movable>
+				<@columns class='col-auto'>
+					<@tform method='post' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' class='d-flex flex-column'>
+						<@input type='hidden' name='action' value='modifyNewsletterTopics' />
+						<@input type='hidden' name='operation' value='moveTopic' />
+						<@input type='hidden' name='newsletter_id' value='${topic.idNewsletter?c}' />
+						<@input type='hidden' name='topic_id' value='${topicKey}' />
+						<@button type='submit' name='move_up' value='true' title='#i18n{newsletter.manage_topics.labelUp}' buttonIcon='chevron-up' color='link' size='sm' class='p-0' hideTitle=['all'] disabled=(topic.order <= 1) />
+						<@button type='submit' name='move_up' value='false' title='#i18n{newsletter.manage_topics.labelDown}' buttonIcon='chevron-down' color='link' size='sm' class='p-0' hideTitle=['all'] disabled=(topic.order >= section_size[topic.section - 1]) />
+					</@tform>
+				</@columns>
+			</#if>
+			<@columns class='col-auto d-none d-sm-block'>
+				<@span class='avatar bg-primary-lt'><@icon style=typeIcon /></@span>
+			</@columns>
+			<@columns class='col text-truncate'>
+				<@div class='d-flex flex-wrap align-items-center gap-1'>
+					<@span class='fw-medium'>${topicTitle}</@span>
+					<#if movable>
+						<#switch status>
+							<#case 'unconfigured'><@tag color='danger-lt' tagIcon='alert-triangle'>#i18n{newsletter.manage_topics.statusUnconfigured}</@tag><#break>
+							<#case 'empty'><@tag color='warning-lt' tagIcon='alert-triangle'>#i18n{newsletter.manage_topics.statusEmpty}</@tag><#break>
+							<#default><@tag color='success-lt' tagIcon='check'>#i18n{newsletter.manage_topics.statusOk}</@tag>
+						</#switch>
+					</#if>
+				</@div>
+				<@div class='small text-secondary text-truncate'>${topic.topicTypeName!}<#if topicSummary?has_content> · ${topicSummary}</#if></@div>
+			</@columns>
+			<@columns class='col-auto d-flex align-items-center gap-1'>
+				<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=modifyTopicConfig&newsletter_id=${topic.idNewsletter?c}&topic_id=${topicKey}' title='#i18n{newsletter.manage_topics.labelConfigure}' buttonIcon='pencil' color=(status == 'unconfigured')?then('primary', 'light') size='sm' hideTitle=['xs','sm'] params={'aria-label': '#i18n{newsletter.manage_topics.labelConfigure} ' + topic.title!} />
+				<@button type='button' title='#i18n{newsletter.manage_topics.labelMoreActions}' buttonIcon='dots-vertical' hideTitle=['all'] dropdownMenu=true>
+					<#if movable && 1 < newsletter.nbSections>
+						<li><h6 class="dropdown-header">#i18n{newsletter.manage_topics.labelMoveTo}</h6></li>
+						<#list 1..newsletter.nbSections as i>
+							<#if i != topic.section>
+								<li>
+									<form method="post" action="jsp/admin/plugins/newsletter/ManageNewsLetter.jsp">
+										<input type="hidden" name="action" value="modifyNewsletterTopics">
+										<input type="hidden" name="operation" value="changeSection">
+										<input type="hidden" name="newsletter_id" value="${newsletter.id?c}">
+										<input type="hidden" name="topic_id" value="${topicKey}">
+										<button type="submit" name="topic_section_number" value="${i}" class="dropdown-item">#i18n{newsletter.manage_topics.labelTopicSection} ${i}</button>
+									</form>
+								</li>
+							</#if>
+						</#list>
+						<li><hr class="dropdown-divider"></li>
+					</#if>
+					<li><a class="dropdown-item text-danger" href="jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=confirmRemoveNewsletterTopic&newsletter_id=${topic.idNewsletter?c}&topic_id=${topicKey}">#i18n{portal.util.labelDelete}</a></li>
+				</@button>
+			</@columns>
+		</@row>
+		<#if !movable>
+			<@tform class='mt-2' method='post' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp'>
+				<@input type='hidden' name='action' value='modifyNewsletterTopics' />
+				<@input type='hidden' name='operation' value='changeSection' />
+				<@input type='hidden' name='newsletter_id' value='${newsletter.id?c}' />
+				<@input type='hidden' name='topic_id' value='${topicKey}' />
+				<@inputGroup size='sm'>
+					<@select name='topic_section_number' id='topic_section_number_${topicKey}' title='#i18n{newsletter.manage_topics.labelMoveTo}'>
+						<#list 1..newsletter.nbSections as i>
+							<@option value=i selected=(i == newsletter.nbSections) label='#i18n{newsletter.manage_topics.labelTopicSection} ${i}' />
+						</#list>
+					</@select>
+					<@button type='submit' title='#i18n{newsletter.manage_topics.labelMove}' buttonIcon='arrows-exchange' color='light' size='sm' />
+				</@inputGroup>
+			</@tform>
+		</#if>
+	</@listGroupItem>
+</#macro>
+<#--
+Macro: previewBox
+Description: the preview of the newsletter, isolated in an iframe so that its styles do not mix with the back office. It follows the scroll of the
+page, can be shown at the width of a phone, outlines its sections and highlights the topic hovered in the list. Topics without content appear as
+notices, in this preview only.
+-->
+<#macro previewBox>
+	<#if topics_list?has_content && html_content??>
+		<@box class='position-sticky newsletter-sticky-1rem'>
+			<@boxHeader title='#i18n{newsletter.manage_topics.labelPreview}'>
+				<@btnGroup size='sm' ariaLabel='#i18n{newsletter.manage_topics.labelPreview}'>
+					<@button type='button' id='preview_desktop' title='#i18n{newsletter.prepare_newsletter.previewDesktop}' buttonIcon='device-desktop' color='light' class='active' hideTitle=['all'] params=previewDesktopParams />
+					<@button type='button' id='preview_mobile' title='#i18n{newsletter.prepare_newsletter.previewMobile}' buttonIcon='device-mobile' color='light' hideTitle=['all'] params=previewMobileParams />
+					<@button type='button' id='preview_outline' title='#i18n{newsletter.manage_topics.labelPreviewOutline}' buttonIcon='border-outer' color='light' class='active' hideTitle=['all'] params=previewOutlineParams />
+				</@btnGroup>
+			</@boxHeader>
+			<@boxBody class='bg-body-tertiary p-2 overflow-auto newsletter-mh-75vh'>
+				<#local previewSrcdoc = ( html_content?? && html_content?is_markup_output )?then( html_content?markup_string, ( html_content!'' )?string ) />
+				<iframe id="newsletter-preview" title="#i18n{newsletter.manage_topics.labelPreview}" srcdoc="${previewSrcdoc}" class="d-block mx-auto border-0 bg-white" style="width:100%; max-width:100%; min-height:300px;"></iframe>
+			</@boxBody>
+			<@div class='card-footer small text-secondary'>#i18n{newsletter.manage_topics.helpPreview}</@div>
+		</@box>
+	<#else>
+		<@box>
+			<@boxHeader title='#i18n{newsletter.manage_topics.labelPreview}' />
+			<@boxBody>
+				<@empty title='#i18n{newsletter.manage_topics.labelNoPreview}' subtitle='#i18n{newsletter.manage_topics.helpNoPreview}' iconName='eye-off' />
+			</@boxBody>
+		</@box>
+	</#if>
+</#macro>
+<#--
+Macro: templateModal
+Description: the choice of the template of the newsletter, in a modal opened from the summary of the template or from the page of a newsletter
+without template.
+-->
+<#macro templateModal>
+	<@modal id='newsletter-template-choose' size='lg'>
+		<@modalHeader modalTitle='#i18n{newsletter.manage_topics.labelSelectNewsletterTemplate}' />
+		<@modalBody>
+			<#if newsletter_templates?has_content>
+				<@tform id='form-newsletter-template-choose' method='post' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp'>
+					<@input type='hidden' name='action' value='modifyNewsletterTopics' />
+					<@input type='hidden' name='operation' value='updateTemplate' />
+					<@input type='hidden' name='newsletter_id' value='${newsletter.id?c}' />
+					<@fieldSet legend='#i18n{newsletter.manage_topics.labelSelectNewsletterTemplate}' hideLegend=['all']>
+						<@row>
+							<#list newsletter_templates as template>
+								<#local templateLabel = ( template.description!'' ) />
+								<@columns xs=6 md=4>
+									<@radioButton labelFor='newsletter_template_id_${template?counter}' labelClass='ps-0' class='radio-image' id='newsletter_template_id_${template?counter}' name='newsletter_template_id' value='${template.id?c}' checked=(template.id=newsletter_template_id)>
+										<@templatePicture imgPath=img_path!'' pictures=available_pictures![] alt=templateLabel pictureKey=template.pictureKey!'' class='img-fluid img-thumbnail' placeholderClass='img-thumbnail py-4' />
+										<@span class='d-block text-center mt-1'>${templateLabel}</@span>
+										<#if (missing_template_ids![])?seq_contains(template.id)><@tag color='warning-lt' class='d-block text-center mt-1'><@icon style='alert-triangle' class='me-1' />#i18n{newsletter.manage_templates.templateMissingShort}</@tag></#if>
+									</@radioButton>
+								</@columns>
+							</#list>
+						</@row>
+					</@fieldSet>
+				</@tform>
+				<#if 0 < newsletter_template_id>
+					<@alert color='warning' iconTitle='alert-triangle' class='mt-3 mb-0' title='#i18n{newsletter.manage_topics.helpChangeTemplate}' />
+				</#if>
+			<#else>
+				<@empty title='#i18n{newsletter.compose_newsletter.noNewsletterTemplate}' iconName='template-off' />
+			</#if>
+		</@modalBody>
+		<@modalFooter>
+			<@button type='button' buttonIcon='x' title='#i18n{portal.util.labelCancel}' color='light' params=dismissModalParams />
+			<#if newsletter_templates?has_content>
+				<@button type='submit' formId='form-newsletter-template-choose' buttonIcon='check' title='#i18n{newsletter.manage_topics.labelApplyTemplate}' color='primary' />
+			</#if>
+		</@modalFooter>
+	</@modal>
+</#macro>
+<#--
+Macro: addTopicModal
+Description: the addition of a topic, in a modal opened from a section, which gives the section of the new topic.
+-->
+<#macro addTopicModal>
+	<@modal id='newsletter-topic-add' size='sm'>
+		<@modalHeader modalTitle='#i18n{newsletter.manage_topics.labelAddTopic}' />
+		<@modalBody>
+			<@tform id='form-newsletter-topic-add' method='post' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp'>
+				<@input type='hidden' name='action' value='modifyNewsletterTopics' />
+				<@input type='hidden' name='operation' value='addTopic' />
+				<@input type='hidden' name='newsletter_id' value='${newsletter.id?c}' />
+				<@input type='hidden' name='topic_section_number' id='topic_section_number' value='1' />
+				<#if 1 < newsletter.nbSections>
+					<@p class='text-secondary'>#i18n{newsletter.manage_topics.labelTopicSection} <@span id='newsletter-topic-add-section'>1</@span></@p>
+				</#if>
+				<@formGroup labelFor='topic_type' labelKey='#i18n{newsletter.manage_topics.labelTopicType}' mandatory=true rows=2>
+					<@select name='topic_type' items=list_topic_types default_value='' />
+				</@formGroup>
+			</@tform>
+		</@modalBody>
+		<@modalFooter>
+			<@button type='button' buttonIcon='x' title='#i18n{portal.util.labelCancel}' color='light' params=dismissModalParams />
+			<@button type='submit' formId='form-newsletter-topic-add' buttonIcon='plus' title='#i18n{newsletter.manage_topics.labelAddTopic}' color='primary' />
+		</@modalFooter>
+	</@modal>
 </#macro>

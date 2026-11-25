@@ -140,4 +140,19 @@ public interface INewsletterTopicService
      *            The locale
      */
     void copyNewsletterTopic( int oldTopicId, NewsletterTopic newsletterTopic, AdminUser user, Locale locale );
+
+    /**
+     * Get a short summary of the configuration of a topic, displayed under the topic in the content page of the newsletter (for example its
+     * filters and its template).
+     *
+     * @param newsletterTopic
+     *            The topic
+     * @param locale
+     *            The locale
+     * @return The summary as plain text, or null if this topic type gives none
+     */
+    default String getConfigurationSummary( NewsletterTopic newsletterTopic, Locale locale )
+    {
+        return null;
+    }
 }

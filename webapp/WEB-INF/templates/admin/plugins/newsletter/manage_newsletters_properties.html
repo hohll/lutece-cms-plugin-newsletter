@@ -1,27 +1,33 @@
-
-<@h level=2 class='d-flex justify-content-between align-items-center'>
-#i18n{newsletter.manage_newsletters_properties.boxTitle}
-<#if is_clean_subscriber_right>
-<@tform method='post' action='jsp/admin/plugins/newsletter/DoCleanSubscribers.jsp'  params={"target": "_top"}>
-	<@button type='submit' buttonIcon='trash' title='#i18n{newsletter.manage_newsletters_properties.buttonRemoveUnconfirmedSubscribers}' hideTitle=['xs','sm'] color='danger' />
-</@tform>
-</#if>
-</@h>
-<@tform method='post' name='manage_newsletter_properties' action='jsp/admin/plugins/newsletter/DoManageNewsLetterProperties.jsp'  params={"target": "_top"}>
-<@formGroup labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveValidation}'>
-	<@checkBox orientation='switch' labelFor='active_validation' labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveValidationComment}' name='active_validation' value='1' checked=properties.validationActive />
-</@formGroup>
-<#if is_active_captcha>
-<@formGroup labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveCaptcha}'>
-	<@checkBox orientation='switch' labelFor='active_captcha' labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveCaptchaComment}' name='active_captcha' value='1' checked=properties.captchaActive />
-</@formGroup>
-</#if>
-<@formGroup labelFor='tos' labelKey='#i18n{newsletter.manage_newsletters_properties.termOfService}'>
-	<@input type='textarea' name='tos' id='tos' rows=10 richtext=true><#if properties.TOS??>${properties.TOS}</#if></@input>
-</@formGroup>
-<@formGroup>
-	<@button type='submit' buttonIcon='check' title='#i18n{newsletter.manage_newsletters_properties.buttonValidate}' class='form-validation' />
-</@formGroup>
-</@tform>
+<@pageContainer>
+	<@pageColumn>
+		<@pageHeader title='#i18n{newsletter.manage_newsletters_properties.boxTitle}'>
+			<#if is_clean_subscriber_right>
+				<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp?view=confirmCleanSubscribers' buttonIcon='trash' title='#i18n{newsletter.manage_newsletters_properties.buttonRemoveUnconfirmedSubscribers}' hideTitle=['xs','sm'] color='danger' class='me-1' />
+			</#if>
+			<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' buttonIcon='arrow-left' title='#i18n{portal.util.labelBack}' color='light' hideTitle=['xs','sm'] />
+		</@pageHeader>
+		<@tform method='post' name='manage_newsletter_properties' action='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' boxed=true>
+			<@input type='hidden' name='action' value='manageNewsLetterProperties' />
+			<@formGroup labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveValidation}'>
+				<@checkBox orientation='switch' id='active_validation' labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveValidationComment}' name='active_validation' value='1' checked=properties.validationActive />
+			</@formGroup>
+			<#if is_active_captcha>
+				<@formGroup labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveCaptcha}'>
+					<@checkBox orientation='switch' id='active_captcha' labelKey='#i18n{newsletter.manage_newsletters_properties.labelActiveCaptchaComment}' name='active_captcha' value='1' checked=properties.captchaActive />
+				</@formGroup>
+			</#if>
+			<@formGroup labelFor='editor' labelKey='#i18n{newsletter.manage_newsletters_properties.labelEditor}' helpKey='#i18n{newsletter.manage_newsletters_properties.editorHelp}'>
+				<@select id='editor' name='editor' items=editors_list default_value=properties.editor />
+			</@formGroup>
+			<@formGroup labelFor='tos' labelKey='#i18n{newsletter.manage_newsletters_properties.termOfService}'>
+				<@input type='textarea' name='tos' id='tos' rows=10 richtext=true><#if properties.TOS??>${properties.TOS}</#if></@input>
+			</@formGroup>
+			<@formGroup>
+				<@button type='submit' buttonIcon='check' title='#i18n{newsletter.manage_newsletters_properties.buttonValidate}' color='primary' class='form-validation' />
+				<@aButton href='jsp/admin/plugins/newsletter/ManageNewsLetter.jsp' buttonIcon='x' title='#i18n{portal.util.labelCancel}' color='light' />
+			</@formGroup>
+		</@tform>
+	</@pageColumn>
+</@pageContainer>
 <#include "/admin/util/editor/editor.html" />
 <@initEditor />

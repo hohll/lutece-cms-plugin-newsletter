@@ -1,0 +1,19 @@
+<#--
+Macro: templatePicture
+Description: thumbnail of a newsletter template, read from the folder of the template pictures of the webapp, or a placeholder
+when the template has no picture or when its picture is not in that folder (a key of the former file store, a deleted file).
+Parameters:
+- imgPath (string): URL of the folder of the template pictures.
+- alt (string): alternative text, already escaped by the caller.
+- pictureKey (string, optional): file name of the picture in the folder.
+- pictures (sequence, optional): names of the pictures present in the folder.
+- class (string, optional): class of the image.
+- placeholderClass (string, optional): extra class of the placeholder.
+-->
+<#macro templatePicture imgPath alt pictureKey='' pictures=[] class='img-fluid' placeholderClass=''>
+<#if pictureKey?has_content && pictures?seq_contains(pictureKey)>
+	<@img url='${imgPath}/${pictureKey}' alt=alt title=alt class=class />
+<#else>
+	<@div class='d-flex align-items-center justify-content-center text-secondary ${placeholderClass}'><@icon style='photo-off' class='fs-1' /></@div>
+</#if>
+</#macro>

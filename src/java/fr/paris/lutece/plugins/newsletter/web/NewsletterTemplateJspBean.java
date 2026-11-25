@@ -39,66 +39,49 @@ import fr.paris.lutece.plugins.newsletter.business.NewsLetterTemplateHome;
 import fr.paris.lutece.plugins.newsletter.service.NewsletterPlugin;
 import fr.paris.lutece.plugins.newsletter.service.NewsletterService;
 import fr.paris.lutece.plugins.newsletter.service.NewsletterTemplateResourceIdService;
-import fr.paris.lutece.portal.service.util.RemovalListenerService;
 import fr.paris.lutece.plugins.newsletter.service.topic.NewsletterTopicService;
 import fr.paris.lutece.plugins.newsletter.util.NewsLetterConstants;
-import fr.paris.lutece.plugins.newsletter.service.NewsletterFileService;
-import fr.paris.lutece.portal.business.physicalfile.PhysicalFile;
 import fr.paris.lutece.portal.business.rbac.RBAC;
 import fr.paris.lutece.portal.business.workgroup.AdminWorkgroupHome;
-import fr.paris.lutece.portal.service.admin.AdminUserService;
 import fr.paris.lutece.portal.service.i18n.I18nService;
 import fr.paris.lutece.portal.service.message.AdminMessage;
 import fr.paris.lutece.portal.service.message.AdminMessageService;
 import fr.paris.lutece.portal.service.plugin.Plugin;
 import fr.paris.lutece.portal.service.plugin.PluginService;
 import fr.paris.lutece.portal.service.rbac.RBACService;
-import fr.paris.lutece.portal.service.template.AppTemplateService;
-import fr.paris.lutece.portal.service.util.AppLogService;
 import fr.paris.lutece.portal.service.util.AppPathService;
-import fr.paris.lutece.portal.service.util.AppPropertiesService;
 import fr.paris.lutece.portal.service.workgroup.AdminWorkgroupService;
-import fr.paris.lutece.portal.service.upload.MultipartItem;
-import fr.paris.lutece.portal.web.admin.PluginAdminPageJspBean;
+import fr.paris.lutece.portal.util.mvc.admin.MVCAdminJspBean;
+import fr.paris.lutece.portal.util.mvc.admin.annotations.Controller;
+import fr.paris.lutece.portal.util.mvc.commons.annotations.Action;
+import fr.paris.lutece.portal.util.mvc.commons.annotations.View;
+import fr.paris.lutece.portal.web.cdi.mvc.Models;
 import fr.paris.lutece.portal.web.constants.Messages;
-import fr.paris.lutece.portal.web.upload.MultipartHttpServletRequest;
 import fr.paris.lutece.util.ReferenceItem;
 import fr.paris.lutece.util.ReferenceList;
-import fr.paris.lutece.util.file.FileUtil;
-import fr.paris.lutece.util.filesystem.UploadUtil;
-import fr.paris.lutece.util.html.HtmlTemplate;
-import fr.paris.lutece.util.url.UrlItem;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Base64;
 
 import jakarta.enterprise.context.RequestScoped;
-import jakarta.enterprise.inject.literal.NamedLiteral;
-import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.servlet.http.HttpServletRequest;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * JspBean to manage newsletter templates.
+ * JspBean to manage newsletter templates. The files of the templates are not uploaded: they are chosen among the files of the folder of the
+ * newsletter templates of the webapp, and their pictures among the files of the folder of the template pictures. A template cannot be
+ * removed from the back office.
  */
 @RequestScoped
 @Named
-public class NewsletterTemplateJspBean extends PluginAdminPageJspBean
+@Controller( controllerJsp = NewsletterTemplateJspBean.CONTROLLER_JSP, controllerPath = NewsletterTemplateJspBean.CONTROLLER_PATH, right = NewsletterTemplateJspBean.RIGHT_NEWSLETTER_TEMPLATE_MANAGEMENT, securityTokenEnabled = true )
+public class NewsletterTemplateJspBean extends MVCAdminJspBean
 {
     /**
      * The right used for managing newsletter templates
@@ -106,163 +89,113 @@ public class NewsletterTemplateJspBean extends PluginAdminPageJspBean
     public static final String RIGHT_NEWSLETTER_TEMPLATE_MANAGEMENT = "NEWSLETTER_TEMPLATE_MANAGEMENT";
 
     /**
+     * The controller JSP
+     */
+    public static final String CONTROLLER_JSP = "ManageTemplates.jsp";
+
+    /**
+     * The controller path
+     */
+    public static final String CONTROLLER_PATH = "jsp/admin/plugins/newsletter/";
+
+    /**
      * Serial version UID
      */
     private static final long serialVersionUID = -2513112227429482685L;
 
+    // TEMPLATES
+    private static final String TEMPLATE_MANAGE_NEWSLETTER_TEMPLATE = "admin/plugins/newsletter/manage_templates.html";
+    private static final String TEMPLATE_MODIFY_NEWSLETTER_TEMPLATE = "admin/plugins/newsletter/modify_newsletter_template.html";
+
+    // VIEWS
+    private static final String VIEW_MANAGE_TEMPLATES = "manageTemplates";
+    private static final String VIEW_CREATE_TEMPLATE = "createTemplate";
+    private static final String VIEW_MODIFY_TEMPLATE = "modifyTemplate";
+
+    // ACTIONS
+    private static final String ACTION_CREATE_TEMPLATE = VIEW_CREATE_TEMPLATE;
+    private static final String ACTION_MODIFY_TEMPLATE = VIEW_MODIFY_TEMPLATE;
+
     // MARKS
-    private static final String MARK_NEWSLETTER_TEMPLATE_ALLOW_CREATION = "newsletter_template_allow_creation";
-    private static final String MARK_NEWSLETTER_TEMPLATE_ALLOW_DELETION = "newsletter_template_allow_deletion";
+    private static final String MARK_TEMPLATE = "template";
+    private static final String MARK_TEMPLATE_TYPE = "template_type";
     private static final String MARK_NEWSLETTER_TEMPLATE_ALLOW_MODIFICATION = "newsletter_template_allow_modification";
     private static final String MARK_NEWSLETTER_TEMPLATE_WORKGROUP_DESCRIPTION = "newsletter_template_workgroup_description";
+    private static final String MARK_NEWSLETTER_TEMPLATE_TYPE_LABEL = "newsletter_template_type_label";
+    private static final String MARK_TEMPLATE_TAB = "template_tab";
+    private static final String TEMPLATE_TAB_CREATE = "create";
+    private static final String TEMPLATE_TAB_INFORMATION = "information";
+    private static final String MARK_IMG_PATH = "img_path";
     private static final String MARK_TEMPLATES_LIST = "template_list";
     private static final String MARK_ALLOW_CREATION = "creation_allowed";
     private static final String MARK_WORKGROUP_LIST = "workgroup_list";
+    private static final String MARK_TEMPLATE_FILE_LIST = "template_file_list";
+    private static final String MARK_TEMPLATE_PICTURE_LIST = "template_picture_list";
+    private static final String MARK_TEMPLATE_MISSING = "template_missing";
+    private static final String MARK_AVAILABLE_PICTURES = "available_pictures";
 
     // MESSAGES
     private static final String MESSAGE_PAGE_TITLE_MANAGE_TEMPLATES = "newsletter.manage_templates.pageTitle";
     private static final String MESSAGE_PAGE_TITLE_ADD_TEMPLATE = "newsletter.add_newsletter_template.pageTitle";
     private static final String MESSAGE_PAGE_TITLE_MODIFY_TEMPLATE = "newsletter.modify_newsletter_template.pageTitle";
-    private static final String MESSAGE_PAGE_TITLE_MODIFY_TEMPLATE_FILE = "newsletter.modify_newsletter_template_file.pageTitle";
     private static final String MESSAGE_NEWSLETTER_TEMPLATE = "newsletter.template.type.newsletter.label";
-    private static final String MESSAGE_FILE_ALREADY_EXISTS = "newsletter.message.fileAlreadyExists";
-    private static final String MESSAGE_USED_TEMPLATE = "newsletter.message.usedTemplate";
-    private static final String MESSAGE_CONFIRM_REMOVE_NEWSLETTER_TEMPLATE = "newsletter.message.confirmRemoveNewsletterTemplate";
-    private static final String MESSAGE_WRONG_IMAGE_EXTENSION = "portal.util.message.wrongImageExtention";
-    private static final String MESSAGE_WRONG_HTML_EXTENSION = "portal.util.message.wrongHtmlExtention";
+    private static final String MESSAGE_TEMPLATE_NOT_FOUND = "newsletter.message.templateNotFound";
+    private static final String MESSAGE_NO_PICTURE = "newsletter.add_newsletter_template.noPicture";
+    private static final String INFO_TEMPLATE_CREATED = "newsletter.info.templateCreated";
+    private static final String INFO_TEMPLATE_UPDATED = "newsletter.info.templateUpdated";
 
     // PARAMETERS
-    private static final String PARAMETER_TEMPLATE_PICTURE = "newsletter_template_picture";
+    private static final String PARAMETER_NEWSLETTER_TEMPLATE_ID = "newsletter_template_id";
+    private static final String PARAMETER_NEWSLETTER_TEMPLATE_NAME = "newsletter_template_name";
+    private static final String PARAMETER_NEWSLETTER_TEMPLATE_TYPE = "newsletter_template_type";
+    private static final String PARAMETER_NEWSLETTER_TEMPLATE_WORKGROUP = "newsletter_template_workgroup";
     private static final String PARAMETER_TEMPLATE_FILE = "newsletter_template_file";
+    private static final String PARAMETER_TEMPLATE_PICTURE = "newsletter_template_picture";
     private static final String PARAMETER_TEMPLATE_SECTION = "newsletter_template_section";
-    private static final String PARAMETER_NEWSLETTER_TEMPLATE_NEW_PICTURE = "newsletter_template_new_picture";
-    private static final String PARAMETER_NEWSLETTER_TEMPLATE_NEW_FILE = "newsletter_template_new_file";
 
-    // PROPERTIES
-    private static final String PROPERTY_PATH_IMAGE_NEWSLETTER_TEMPLATE = "newsletter.path.image.newsletter.template";
-    private static final String PROPERTY_PATH_TEMPLATE = "path.templates";
-
-    private static final String TEMPLATE_MANAGE_NEWSLETTER_TEMPLATE = "admin/plugins/newsletter/manage_templates.html";
-    private static final String TEMPLATE_CREATE_NEWSLETTER_TEMPLATE = "admin/plugins/newsletter/add_newsletter_template.html";
-    private static final String TEMPLATE_MODIFY_NEWSLETTER_TEMPLATE = "admin/plugins/newsletter/modify_newsletter_template.html";
-    private static final String TEMPLATE_MODIFY_NEWSLETTER_TEMPLATE_FILE = "admin/plugins/newsletter/modify_newsletter_template_file.html";
-
-    // URL
-    private static final String JSP_URL_MANAGE_NEWSLETTER_TEMPLATES = "ManageTemplates.jsp";
-    private static final String JSP_DO_REMOVE_NEWSLETTER_TEMPLATE = "jsp/admin/plugins/newsletter/DoRemoveNewsLetterTemplate.jsp";
-
-    private static final String CONSTANT_END_OF_LINE = "\n";
+    private static final int DEFAULT_SECTION_NUMBER = 1;
 
     @Inject
     private transient NewsletterTopicService _newsletterTopicService;
     @Inject
     private transient NewsletterService _newsletterService;
-    @Inject
-    @Named( "newsletter.newsletterTemplateRemovalService" )
-    private transient RemovalListenerService _templateRemovalService;
-
-    /**
-     * JspBeans are instantiated by &lt;jsp:useBean&gt; outside of the CDI
-     * container, so @Inject is not honored. In addition, instances kept in the
-     * HTTP session can predate any constructor changes. The lazy getters below
-     * resolve the required services via CDI lookup on first use.
-     */
-    private NewsletterTopicService getNewsletterTopicService( )
-    {
-        if ( _newsletterTopicService == null )
-        {
-            _newsletterTopicService = CDI.current( ).select( NewsletterTopicService.class ).get( );
-        }
-        return _newsletterTopicService;
-    }
-
-    private NewsletterService getNewsletterService( )
-    {
-        if ( _newsletterService == null )
-        {
-            _newsletterService = CDI.current( ).select( NewsletterService.class ).get( );
-        }
-        return _newsletterService;
-    }
-
-    private RemovalListenerService getTemplateRemovalService( )
-    {
-        if ( _templateRemovalService == null )
-        {
-            _templateRemovalService = CDI.current( )
-                    .select( RemovalListenerService.class, NamedLiteral.of( "newsletter.newsletterTemplateRemovalService" ) )
-                    .get( );
-        }
-        return _templateRemovalService;
-    }
 
     /**
      * Builds the newsletter's templates management page
      * 
      * @param request
      *            The HTTP request
-     * @return the html code for newsletter's templates management page (liste of templates + available actions)
+     * @param model
+     *            the model of the page
+     * @return the html code for newsletter's templates management page (list of templates + available actions)
      */
-    public String getManageTemplates( HttpServletRequest request )
+    @View( value = VIEW_MANAGE_TEMPLATES, defaultView = true )
+    public String getManageTemplates( HttpServletRequest request, Models model )
     {
-        setPageTitleProperty( MESSAGE_PAGE_TITLE_MANAGE_TEMPLATES );
+        Collection<NewsLetterTemplate> listTemplates = AdminWorkgroupService.getAuthorizedCollection( NewsLetterTemplateHome.getTemplatesList( getPlugin( ) ),
+                (User) getUser( ) );
+        Map<String, String> mapTemplateTypeLabels = buildTemplateTypeList( ).toMap( );
+        List<Map<String, Object>> listNewsletterTemplateDisplay = new ArrayList<>( );
 
-        Map<String, Object> model = new HashMap<String, Object>( );
-
-        Collection<NewsLetterTemplate> refListAllTemplates = NewsLetterTemplateHome.getTemplatesList( getPlugin( ) );
-        refListAllTemplates = AdminWorkgroupService.getAuthorizedCollection( refListAllTemplates, (User) getUser( ) );
-
-        Collection<Map<String, Object>> listNewsletterTemplateDisplay = new ArrayList<Map<String, Object>>( );
-
-        for ( NewsLetterTemplate newsletterTemplate : refListAllTemplates )
+        for ( NewsLetterTemplate newsletterTemplate : listTemplates )
         {
-            Map<String, Object> newsletterTemplateDisplay = new HashMap<String, Object>( );
-            newsletterTemplateDisplay.put( NewsLetterConstants.MARK_TEMPLATE, newsletterTemplate );
-            newsletterTemplateDisplay.put( MARK_NEWSLETTER_TEMPLATE_ALLOW_CREATION,
-                    RBACService.isAuthorized( newsletterTemplate, NewsletterTemplateResourceIdService.PERMISSION_CREATE, (User) getUser( ) ) );
-
-            newsletterTemplateDisplay.put( MARK_NEWSLETTER_TEMPLATE_ALLOW_DELETION,
-                    RBACService.isAuthorized( newsletterTemplate, NewsletterTemplateResourceIdService.PERMISSION_DELETE, (User) getUser( ) ) );
+            Map<String, Object> newsletterTemplateDisplay = new HashMap<>( );
+            newsletterTemplateDisplay.put( MARK_TEMPLATE, newsletterTemplate );
+            newsletterTemplateDisplay.put( MARK_NEWSLETTER_TEMPLATE_TYPE_LABEL,
+                    mapTemplateTypeLabels.getOrDefault( newsletterTemplate.getTopicType( ), newsletterTemplate.getTopicType( ) ) );
             newsletterTemplateDisplay.put( MARK_NEWSLETTER_TEMPLATE_ALLOW_MODIFICATION,
                     RBACService.isAuthorized( newsletterTemplate, NewsletterTemplateResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) );
-
-            // The workgroup description is needed for coherence and not the key
-            if ( newsletterTemplate.getWorkgroup( ).equals( NewsLetterConstants.ALL_GROUPS ) )
-            {
-                newsletterTemplateDisplay.put( MARK_NEWSLETTER_TEMPLATE_WORKGROUP_DESCRIPTION,
-                        I18nService.getLocalizedString( NewsLetterConstants.PROPERTY_LABEL_ALL_GROUPS, getLocale( ) ) );
-            }
-            else
-            {
-                newsletterTemplateDisplay.put( MARK_NEWSLETTER_TEMPLATE_WORKGROUP_DESCRIPTION,
-                        AdminWorkgroupHome.findByPrimaryKey( newsletterTemplate.getWorkgroup( ) ).getDescription( ) );
-            }
-            String templateFileKey = newsletterTemplate.getFileKey();
-            // if template file key can be parsed as an int, it means it is not the name of the file
-            if ( templateFileKey != null && StringUtils.isNumeric( templateFileKey ) )
-            {
-                fr.paris.lutece.portal.business.file.File luteceTemplateFile = NewsletterFileService.getFileByKey( newsletterTemplate.getFileKey( ) );
-                newsletterTemplateDisplay.put( NewsLetterConstants.MARK_TEMPLATE_FILE, luteceTemplateFile.getPhysicalFile().getValue());
-                newsletterTemplateDisplay.put( NewsLetterConstants.MARK_TEMPLATE_FILE_NAME, luteceTemplateFile.getTitle());
-            }
-            String imageFileKey = newsletterTemplate.getPictureKey();
-            if(imageFileKey != null && StringUtils.isNumeric( imageFileKey ) )
-            {
-                fr.paris.lutece.portal.business.file.File luteceImageFile = NewsletterFileService.getFileByKey( newsletterTemplate.getPictureKey( ) );
-                newsletterTemplateDisplay.put( NewsLetterConstants.MARK_TEMPLATE_IMAGE, Base64.getEncoder().encodeToString(luteceImageFile.getPhysicalFile().getValue()));
-                newsletterTemplateDisplay.put( NewsLetterConstants.MARK_TEMPLATE_IMAGE_NAME, luteceImageFile.getTitle());
-
-            }
+            newsletterTemplateDisplay.put( MARK_NEWSLETTER_TEMPLATE_WORKGROUP_DESCRIPTION, getWorkgroupDescription( newsletterTemplate ) );
+            newsletterTemplateDisplay.put( MARK_TEMPLATE_MISSING, !_newsletterService.isTemplateAvailable( newsletterTemplate ) );
             listNewsletterTemplateDisplay.add( newsletterTemplateDisplay );
         }
 
         model.put( MARK_TEMPLATES_LIST, listNewsletterTemplateDisplay );
-        model.put( MARK_ALLOW_CREATION, isNewsletterTemplateCreationAllowed( request ) );
+        model.put( MARK_ALLOW_CREATION, isNewsletterTemplateCreationAllowed( ) );
+        model.put( MARK_IMG_PATH, _newsletterService.getImageFolderPath( AppPathService.getBaseUrl( request ) ) );
+        model.put( MARK_AVAILABLE_PICTURES, new ArrayList<>( _newsletterService.getTemplatePictureList( ).toMap( ).keySet( ) ) );
 
-        // get the list of all templates
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_MANAGE_NEWSLETTER_TEMPLATE, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
+        return getPage( MESSAGE_PAGE_TITLE_MANAGE_TEMPLATES, TEMPLATE_MANAGE_NEWSLETTER_TEMPLATE );
     }
 
     /**
@@ -270,96 +203,56 @@ public class NewsletterTemplateJspBean extends PluginAdminPageJspBean
      * 
      * @param request
      *            The HTTP request
+     * @param model
+     *            the model of the page
      * @return the html code for newsletter's templates creation page
      */
-    public String getCreateNewsLetterTemplate( HttpServletRequest request )
+    @View( VIEW_CREATE_TEMPLATE )
+    public String getCreateNewsLetterTemplate( HttpServletRequest request, Models model )
     {
-        if ( !isNewsletterTemplateCreationAllowed( request ) )
+        if ( !isNewsletterTemplateCreationAllowed( ) )
         {
-            return getManageTemplates( request );
+            return redirect( request, AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_STOP ) );
         }
 
-        setPageTitleProperty( MESSAGE_PAGE_TITLE_ADD_TEMPLATE );
+        model.put( MARK_TEMPLATE_TAB, TEMPLATE_TAB_CREATE );
+        fillFormModel( model, request );
 
-        // get the list of template types
-        // nothing should be checked
-        Map<String, Object> model = new HashMap<String, Object>( );
-        model.put( NewsLetterConstants.MARK_TEMPLATE_TYPE, buildTemplateTypeList( AdminUserService.getLocale( request ) ) );
-        model.put( MARK_WORKGROUP_LIST, AdminWorkgroupService.getUserWorkgroups( getUser( ), getLocale( ) ) );
-
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_CREATE_NEWSLETTER_TEMPLATE, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
+        return getPage( MESSAGE_PAGE_TITLE_ADD_TEMPLATE, TEMPLATE_MODIFY_NEWSLETTER_TEMPLATE );
     }
 
     /**
-     * Processes the creation form of a new newsletter template by recovering the parameters in the http request
+     * Processes the creation form of a new newsletter template
      * 
      * @param request
      *            the http request
-     * @return The Jsp URL of the process result
+     * @param model
+     *            the model of the page
+     * @return the creation page when a field is invalid, the redirection to the templates management page otherwise
      */
-    public String doCreateNewsletterTemplate( HttpServletRequest request )
+    @Action( ACTION_CREATE_TEMPLATE )
+    public String doCreateNewsletterTemplate( HttpServletRequest request, Models model )
     {
-        if ( !isNewsletterTemplateCreationAllowed( request ) )
+        if ( !isNewsletterTemplateCreationAllowed( ) )
         {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
+            return redirect( request, AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_STOP ) );
         }
 
         NewsLetterTemplate newsletterTemplate = new NewsLetterTemplate( );
+        populate( newsletterTemplate, request );
 
-        try
+        if ( !validate( newsletterTemplate ) )
         {
-            // create the multipart request
-            if ( request instanceof MultipartHttpServletRequest )
-            {
-                MultipartHttpServletRequest multi = (MultipartHttpServletRequest) request;
+            addError( Messages.MANDATORY_FIELDS, getLocale( ) );
+            model.put( MARK_TEMPLATE, newsletterTemplate );
 
-                // Mandatory fields
-                String strTopicType = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_TYPE );
-                String strDescription = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_NAME );
-                String strWorkgroup = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_WORKGROUP );
-
-                MultipartItem imageItem = multi.getFile( PARAMETER_TEMPLATE_PICTURE );
-
-                String strImageFileName = imageItem == null ? null : UploadUtil.cleanFileName( imageItem.getName( ) );
-
-                MultipartItem modelItem = multi.getFile( PARAMETER_TEMPLATE_FILE );
-                String strTemplateFileName = modelItem == null ? null : UploadUtil.cleanFileName( modelItem.getName( ) );
-                String strSectionNumber = request.getParameter( PARAMETER_TEMPLATE_SECTION );
-
-                if ( StringUtils.isEmpty( strWorkgroup ) || StringUtils.isEmpty( strTopicType ) || StringUtils.isEmpty( strDescription ) || imageItem == null
-                        || StringUtils.isEmpty( strImageFileName ) || !FileUtil.hasImageExtension( strImageFileName ) || modelItem == null
-                        || StringUtils.isEmpty( strTemplateFileName ) || !FileUtil.hasHtmlExtension( strTemplateFileName )
-                        || !StringUtils.isNumeric( strSectionNumber ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, Messages.MANDATORY_FIELDS, AdminMessage.TYPE_STOP );
-                }
-
-                int nSections = Integer.parseInt( strSectionNumber );
-                String strTemplateFileKey = NewsletterFileService.storeFileItem( modelItem );
-                newsletterTemplate.setFileKey( strTemplateFileKey );
-                String strImageFileKey = NewsletterFileService.storeFileItem( imageItem );
-                newsletterTemplate.setPictureKey( strImageFileKey );
-
-                // Complete the newsLetterTemplate
-                newsletterTemplate.setDescription( strDescription );
-                newsletterTemplate.setTopicType( strTopicType );
-                newsletterTemplate.setWorkgroup( strWorkgroup );
-                if ( nSections <= 0 )
-                {
-                    nSections = 1;
-                }
-                newsletterTemplate.setSectionNumber( nSections );
-                NewsLetterTemplateHome.create( newsletterTemplate, getPlugin( ) );
-            }
-        }
-        catch( Exception e )
-        {
-            AppLogService.error( e.getMessage( ), e );
+            return getCreateNewsLetterTemplate( request, model );
         }
 
-        return getHomeUrl( request );
+        NewsLetterTemplateHome.create( newsletterTemplate, getPlugin( ) );
+        addInfo( INFO_TEMPLATE_CREATED, getLocale( ) );
+
+        return redirectView( request, VIEW_MANAGE_TEMPLATES );
     }
 
     /**
@@ -367,466 +260,70 @@ public class NewsletterTemplateJspBean extends PluginAdminPageJspBean
      * 
      * @param request
      *            The HTTP request
-     * @return the html code for newsletter's templates creation page
+     * @param model
+     *            the model of the page
+     * @return the html code for newsletter's templates modification page
      */
-    public String getModifyNewsLetterTemplate( HttpServletRequest request )
+    @View( VIEW_MODIFY_TEMPLATE )
+    public String getModifyNewsLetterTemplate( HttpServletRequest request, Models model )
     {
-        String strIdTemplate = request.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID );
-        int nIdTemplate = Integer.parseInt( strIdTemplate );
-        NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( nIdTemplate, getPlugin( ) );
+        NewsLetterTemplate newsletterTemplate = findTemplate( request );
+        String strErrorUrl = checkTemplate( request, newsletterTemplate, NewsletterTemplateResourceIdService.PERMISSION_MODIFY );
 
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE,
-                Integer.toString( newsletterTemplate.getId( ) ), NewsletterTemplateResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
+        if ( strErrorUrl != null )
         {
-            return getManageTemplates( request );
+            return redirect( request, strErrorUrl );
         }
 
-        setPageTitleProperty( MESSAGE_PAGE_TITLE_MODIFY_TEMPLATE );
+        if ( model.get( MARK_TEMPLATE ) == null )
+        {
+            model.put( MARK_TEMPLATE, newsletterTemplate );
+        }
 
-        // get the list of template types
-        Map<String, Object> model = new HashMap<String, Object>( );
-        model.put( NewsLetterConstants.MARK_TEMPLATE_TYPE, buildTemplateTypeList( AdminUserService.getLocale( request ) ) );
-        model.put( MARK_WORKGROUP_LIST, AdminWorkgroupService.getUserWorkgroups( getUser( ), getLocale( ) ) );
-        model.put( NewsLetterConstants.MARK_TEMPLATE, newsletterTemplate );
+        NewsLetterTemplate templateDisplayed = (NewsLetterTemplate) model.get( MARK_TEMPLATE );
+        model.put( MARK_TEMPLATE_TAB, TEMPLATE_TAB_INFORMATION );
+        fillFormModel( model, request );
+        model.put( MARK_TEMPLATE_MISSING, StringUtils.isNotEmpty( templateDisplayed.getTemplateName( ) ) && !_newsletterService.isTemplateAvailable( templateDisplayed ) );
 
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_MODIFY_NEWSLETTER_TEMPLATE, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
+        return getPage( MESSAGE_PAGE_TITLE_MODIFY_TEMPLATE, TEMPLATE_MODIFY_NEWSLETTER_TEMPLATE );
     }
 
     /**
-     * Processes the modification form of a newsletter template by recovering the parameters in the http request
+     * Processes the modification form of a newsletter template
      * 
      * @param request
      *            the http request
-     * @return The Jsp URL of the process result
+     * @param model
+     *            the model of the page
+     * @return the modification page when a field is invalid, the redirection to the templates management page otherwise
      */
-    public String doModifyNewsletterTemplate( HttpServletRequest request )
+    @Action( ACTION_MODIFY_TEMPLATE )
+    public String doModifyNewsletterTemplate( HttpServletRequest request, Models model )
     {
-        try
+        NewsLetterTemplate newsletterTemplate = findTemplate( request );
+        String strErrorUrl = checkTemplate( request, newsletterTemplate, NewsletterTemplateResourceIdService.PERMISSION_MODIFY );
+
+        if ( strErrorUrl != null )
         {
-            // create the multipart request
-            if ( request instanceof MultipartHttpServletRequest )
-            {
-                MultipartHttpServletRequest multi = (MultipartHttpServletRequest) request;
-
-                // creation of the NewsLetterTemplate
-                NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome
-                        .findByPrimaryKey( Integer.parseInt( multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID ) ), getPlugin( ) );
-
-                // Workgroup & RBAC permissions
-                if ( !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE,
-                        Integer.toString( newsletterTemplate.getId( ) ), NewsletterTemplateResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-                }
-
-                // Mandatory fields
-                String strType = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_TYPE );
-                String strDescription = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_NAME );
-                String strWorkgroup = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_WORKGROUP );
-                String strSectionNumber = request.getParameter( PARAMETER_TEMPLATE_SECTION );
-
-                if ( StringUtils.isEmpty( strDescription ) || StringUtils.isEmpty( strWorkgroup ) || !StringUtils.isNumeric( strSectionNumber ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, Messages.MANDATORY_FIELDS, AdminMessage.TYPE_STOP );
-                }
-                int nSections = Integer.parseInt( strSectionNumber );
-
-                // Names of the old files
-                String strOldFileKey = newsletterTemplate.getFileKey( );
-                String strOldImageKey = newsletterTemplate.getPictureKey( );
-
-                MultipartItem imageItem = multi.getFile( PARAMETER_NEWSLETTER_TEMPLATE_NEW_PICTURE );
-                String strImageFileKey = null;
-                File fileImage = null;
-
-                if ( ( imageItem != null ) && ( imageItem.getSize( ) != 0 ) )
-                {
-                    strImageFileKey = UploadUtil.cleanFileName( imageItem.getName( ) );
-                    String strError = null;
-                    if ( !FileUtil.hasImageExtension( strImageFileKey ) )
-                    {
-                        strError = MESSAGE_WRONG_IMAGE_EXTENSION;
-                    }
-
-                    fileImage = new File( strImageFileKey );
-
-
-                    if ( strError != null )
-                    {
-                        return AdminMessageService.getMessageUrl( request, strError, AdminMessage.TYPE_STOP );
-                    }
-                }
-
-                MultipartItem modelItem = multi.getFile( PARAMETER_NEWSLETTER_TEMPLATE_NEW_FILE );
-
-                if ( ( modelItem != null ) && ( modelItem.getSize( ) != 0 ) )
-                {
-                    String strFileName = UploadUtil.cleanFileName( modelItem.getName( ) );
-                    File fileTemplate = new File( strFileName );
-                    String strError = null;
-                    if ( fileTemplate.exists( ) && !( strFileName ).equals( strOldFileKey ) )
-                    {
-                        strError = MESSAGE_FILE_ALREADY_EXISTS;
-                    }
-                    if ( !FileUtil.hasHtmlExtension( strFileName ) )
-                    {
-                        strError = MESSAGE_WRONG_HTML_EXTENSION;
-                    }
-                    if ( strError != null )
-                    {
-                        return AdminMessageService.getMessageUrl( request, strError, AdminMessage.TYPE_STOP );
-                    }
-                  String templateFileKey =  NewsletterFileService.storeFileItem( modelItem );
-                    if( StringUtils.isNumeric( strOldFileKey ) )
-                    {
-                        NewsletterFileService.deleteFile( strOldFileKey );
-                    }
-                    else {
-                        String strPathFileNewsletterTemplate = AppPathService.getPath( PROPERTY_PATH_TEMPLATE )
-                                + AppPropertiesService.getProperty( NewsLetterConstants.PROPERTY_PATH_FILE_NEWSLETTER_TEMPLATE );
-                        File file = new File( strPathFileNewsletterTemplate + File.separator + newsletterTemplate.getFileKey() );
-                        file.delete( );
-                    }
-                    newsletterTemplate.setFileKey( templateFileKey );
-                }
-
-                // if the two files are ok, write them
-                if ( imageItem != null && fileImage != null && strImageFileKey != null )
-                {
-                   String strImageKey = NewsletterFileService.storeFileItem( imageItem );
-                    if ( StringUtils.isNumeric( strOldImageKey ) )
-                    {
-                        NewsletterFileService.deleteFile( strOldImageKey );
-                    }
-                    else
-                    {
-                        String strPathFileNewsletterTemplate = AppPathService.getPath( PROPERTY_PATH_IMAGE_NEWSLETTER_TEMPLATE );
-                        File file = new File( strPathFileNewsletterTemplate + File.separator + newsletterTemplate.getPictureKey() );
-                        file.delete( );
-                    }
-                    newsletterTemplate.setPictureKey( strImageKey );
-                }
-
-                // Complete the newsLetterTemplate
-                newsletterTemplate.setDescription( strDescription );
-                newsletterTemplate.setTopicType( strType );
-                newsletterTemplate.setWorkgroup( strWorkgroup );
-
-                int nOldSectionNumber = newsletterTemplate.getSectionNumber( );
-                getNewsletterService().modifySectionNumber( nOldSectionNumber, nSections, newsletterTemplate.getId( ) );
-                if ( nSections > 0 )
-                {
-                    newsletterTemplate.setSectionNumber( nSections );
-                }
-                NewsLetterTemplateHome.update( newsletterTemplate, getPlugin( ) );
-            }
-        }
-        catch( Exception e )
-        {
-            AppLogService.error( e.getMessage( ), e );
+            return redirect( request, strErrorUrl );
         }
 
-        return getHomeUrl( request );
-    }
+        int nOldSectionNumber = newsletterTemplate.getSectionNumber( );
+        populate( newsletterTemplate, request );
 
-
-    /**
-     * Builds the newsletter's templates modification page (with the modification of the file content)
-     * 
-     * @param request
-     *            The HTTP request
-     * @return the html code for newsletter's templates creation page
-     */
-    public String getModifyNewsLetterTemplateFile( HttpServletRequest request )
-    {
-        setPageTitleProperty( MESSAGE_PAGE_TITLE_MODIFY_TEMPLATE_FILE );
-
-        Map<String, Object> model = new HashMap<String, Object>( );
-
-            int nIdTemplate = Integer.parseInt( request.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID ) );
-            NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( nIdTemplate, getPlugin( ) );
-
-            // Workgroup & RBAC permissions
-            if ( !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE,
-                    Integer.toString( newsletterTemplate.getId( ) ), NewsletterTemplateResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
-            {
-                return getManageTemplates( request );
-            }
-
-            // get the file content
-
-            fr.paris.lutece.portal.business.file.File luteceTemplateFile = null;
-        String templateFileKey = newsletterTemplate.getFileKey();
-
-            // get the file content
-            String strPathFileNewsletterTemplate = AppPathService.getPath( PROPERTY_PATH_TEMPLATE )
-                    + AppPropertiesService.getProperty( NewsLetterConstants.PROPERTY_PATH_FILE_NEWSLETTER_TEMPLATE );
-              BufferedReader fileReader = null;
-                try
-                {
-
-                    // if template file key can be parsed as an int, it means it is not the name of the file
-                    if ( templateFileKey != null && StringUtils.isNumeric( templateFileKey ) )
-                    {
-                        luteceTemplateFile = NewsletterFileService.getFileByKey( templateFileKey );
-                        // write the file content in a temporary file
-                        File file = File.createTempFile( "temp", ".html" );
-                        FileWriter fileWriter = new FileWriter( file );
-                        fileWriter.write( new String( luteceTemplateFile.getPhysicalFile().getValue() ) );
-                        fileWriter.close( );
-                        fileReader = new BufferedReader( new FileReader( file ) );
-                        // delete the temporary file
-                        file.delete( );
-                        String strFileName = luteceTemplateFile.getTitle( );
-                        model.put( NewsLetterConstants.MARK_TEMPLATE_FILE_NAME, strFileName );
-                        model.put( fr.paris.lutece.plugins.newsletter.util.NewsLetterConstants.MARK_TEMPLATE_FILE, luteceTemplateFile.getPhysicalFile().getValue() );
-                    }
-                    else
-                    {
-                        String strFileName = newsletterTemplate.getFileKey( );
-                        fileReader = new BufferedReader( new FileReader( strPathFileNewsletterTemplate + File.separator + strFileName ) );
-                        model.put( NewsLetterConstants.MARK_TEMPLATE_FILE_NAME, strFileName );
-
-                    }
-
-                StringBuilder sbSource = new StringBuilder( );
-                String line = fileReader.readLine( );
-
-                while ( line != null )
-                {
-                    sbSource.append( line + CONSTANT_END_OF_LINE );
-                    line = fileReader.readLine( );
-                }
-                fileReader.close( );
-                model.put( NewsLetterConstants.MARK_TEMPLATE_SOURCE, sbSource.toString( ) );
-
-                }
-             catch( FileNotFoundException f )
-            {
-                AppLogService.error(  f.getMessage() );
-            }
-             catch( IOException i )
-            {
-                AppLogService.error( i.getMessage() );
-            }
-             finally
-            {
-                IOUtils.closeQuietly( fileReader );
-            }
-
-            model.put( NewsLetterConstants.MARK_TEMPLATE_TYPE, buildTemplateTypeList( AdminUserService.getLocale( request ) ) );
-            model.put( NewsLetterConstants.MARK_TEMPLATE, newsletterTemplate );
-        HtmlTemplate template = AppTemplateService.getTemplate( TEMPLATE_MODIFY_NEWSLETTER_TEMPLATE_FILE, getLocale( ), model );
-
-        return getAdminPage( template.getHtml( ) );
-    }
-
-    /**
-     * Processes the modification form of a newsletter template modified by hand by recovering the parameters in the http request
-     * 
-     * @param request
-     *            the http request
-     * @return The Jsp URL of the process result
-     */
-    public String doModifyNewsletterTemplateFile( HttpServletRequest request )
-    {
-        FileWriter fileWriter = null;
-        try
+        if ( !validate( newsletterTemplate ) )
         {
-            // create the multipart request
-            if ( request instanceof MultipartHttpServletRequest )
-            {
-                MultipartHttpServletRequest multi = (MultipartHttpServletRequest) request;
+            addError( Messages.MANDATORY_FIELDS, getLocale( ) );
+            model.put( MARK_TEMPLATE, newsletterTemplate );
 
-                // creation of the NewsLetterTemplate
-                NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome
-                        .findByPrimaryKey( Integer.parseInt( multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID ) ), getPlugin( ) );
-
-                // Workgroup & RBAC permissions
-                if ( !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE,
-                        Integer.toString( newsletterTemplate.getId( ) ), NewsletterTemplateResourceIdService.PERMISSION_MODIFY, (User) getUser( ) ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-                }
-
-                // Mandatory fields
-                String strType = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_TYPE );
-                String strDescription = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_NAME );
-                String strSectionNumber = request.getParameter( PARAMETER_TEMPLATE_SECTION );
-
-                if ( StringUtils.isEmpty( strDescription ) || !StringUtils.isNumeric( strSectionNumber ) )
-                {
-                    return AdminMessageService.getMessageUrl( request, Messages.MANDATORY_FIELDS, AdminMessage.TYPE_STOP );
-                }
-                int nSections = Integer.parseInt( strSectionNumber );
-
-                // Names of the old files
-                String strOldFileKey = newsletterTemplate.getFileKey( );
-                String strOldImageName = newsletterTemplate.getPictureKey( );
-
-                MultipartItem imageItem = multi.getFile( PARAMETER_NEWSLETTER_TEMPLATE_NEW_PICTURE );
-
-                if ( ( imageItem != null ) && ( imageItem.getSize( ) != 0 ) )
-                {
-                    String strFileKey = NewsletterFileService.storeFileItem( imageItem );
-                    newsletterTemplate.setPictureKey( strFileKey );
-                    // we delete the old picture
-                    if ( strOldImageName != null && StringUtils.isNumeric( strOldImageName ) )
-                    {
-                        NewsletterFileService.deleteFile( strOldImageName );
-                    }
-                    else
-                    {
-                        String strPathFileNewsletterTemplate = AppPathService.getPath( PROPERTY_PATH_IMAGE_NEWSLETTER_TEMPLATE );
-                        File file = new File( strPathFileNewsletterTemplate + File.separator + strOldImageName );
-                        file.delete( );
-                    }
-                }
-
-                // Writes the new content of the file.
-                String fileContent = multi.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_SOURCE );
-                if ( strOldFileKey != null && StringUtils.isNumeric( strOldFileKey ) )
-                {
-                    fr.paris.lutece.portal.business.file.File fileToModify  = NewsletterFileService.getFileByKey( strOldFileKey );
-                    fileToModify.getPhysicalFile().setValue( fileContent.getBytes() );
-                    NewsletterFileService.deleteFile( strOldFileKey );
-                    String newFileKey =  NewsletterFileService.storeFile( fileToModify );
-                    newsletterTemplate.setFileKey( newFileKey );
-
-                }
-                else {
-                    String strPathFileNewsletterTemplate = AppPathService.getPath( PROPERTY_PATH_TEMPLATE )
-                            + AppPropertiesService.getProperty( NewsLetterConstants.PROPERTY_PATH_FILE_NEWSLETTER_TEMPLATE );
-                    String strFileName = newsletterTemplate.getFileKey( );
-                    File file = new File( strPathFileNewsletterTemplate + File.separator + strFileName );
-                    fr.paris.lutece.portal.business.file.File luteceFile = new fr.paris.lutece.portal.business.file.File( );
-                    luteceFile.setTitle( strFileName );
-                    luteceFile.setSize( (int) file.length( ) );
-                    luteceFile.setMimeType( "text/html" );
-                    NewsletterFileService.storeFile( luteceFile );
-                    PhysicalFile physicalFile = new PhysicalFile( );
-                    physicalFile.setValue( fileContent.getBytes() );
-                    luteceFile.setPhysicalFile( physicalFile );
-                    String newFileKey =  NewsletterFileService.storeFile( luteceFile );
-                    newsletterTemplate.setFileKey( newFileKey );
-                    file.delete();
-
-                }
-
-
-                int nOldSectionNumber = newsletterTemplate.getSectionNumber( );
-                getNewsletterService().modifySectionNumber( nOldSectionNumber, nSections, newsletterTemplate.getId( ) );
-
-                // Complete the newsLetterTemplate
-                newsletterTemplate.setDescription( strDescription );
-                newsletterTemplate.setTopicType( strType );
-                if ( nSections > 0 )
-                {
-                    newsletterTemplate.setSectionNumber( nSections );
-                }
-                NewsLetterTemplateHome.update( newsletterTemplate, getPlugin( ) );
-            }
-        }
-        catch( Exception e )
-        {
-            AppLogService.error( e.getMessage( ), e );
-        }
-        finally
-        {
-            IOUtils.closeQuietly( fileWriter );
+            return getModifyNewsLetterTemplate( request, model );
         }
 
-        return getHomeUrl( request );
-    }
+        _newsletterService.modifySectionNumber( nOldSectionNumber, newsletterTemplate.getSectionNumber( ), newsletterTemplate.getId( ) );
+        NewsLetterTemplateHome.update( newsletterTemplate, getPlugin( ) );
+        addInfo( INFO_TEMPLATE_UPDATED, getLocale( ) );
 
-    /**
-     * Manages the removal form of a newsletter template whose identifier is in the http request
-     * 
-     * @param request
-     *            The Http request
-     * @return the html code to confirm
-     */
-    public String getRemoveNewsLetterTemplate( HttpServletRequest request )
-    {
-        String strNewsletterTemplateId = request.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID );
-        int nNewsletterTemplateId = Integer.parseInt( strNewsletterTemplateId );
-        NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( nNewsletterTemplateId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE,
-                Integer.toString( newsletterTemplate.getId( ) ), NewsletterTemplateResourceIdService.PERMISSION_DELETE, (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-        List<String> listMessages = new ArrayList<String>( );
-        if ( !getTemplateRemovalService().checkForRemoval( strNewsletterTemplateId, listMessages, AdminUserService.getLocale( request ) ) )
-        {
-            Object [ ] args = {
-                    listMessages.get( 0 )
-            };
-            return AdminMessageService.getMessageUrl( request, MESSAGE_USED_TEMPLATE, args, AdminMessage.TYPE_STOP );
-        }
-
-        UrlItem url = new UrlItem( JSP_DO_REMOVE_NEWSLETTER_TEMPLATE );
-        url.addParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID,
-                Integer.parseInt( request.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID ) ) );
-
-        return AdminMessageService.getMessageUrl( request, MESSAGE_CONFIRM_REMOVE_NEWSLETTER_TEMPLATE, url.getUrl( ), AdminMessage.TYPE_CONFIRMATION );
-    }
-
-    /**
-     * Processes the removal form of a newsletter template
-     * 
-     * @param request
-     *            The Http request
-     * @return the jsp URL to display the form to manage newsletter templates
-     */
-    public String doRemoveNewsLetterTemplate( HttpServletRequest request )
-    {
-        int nNewsletterTemplateId = Integer.parseInt( request.getParameter( NewsLetterConstants.PARAMETER_NEWSLETTER_TEMPLATE_ID ) );
-
-        NewsLetterTemplate newsLetterTemplate = NewsLetterTemplateHome.findByPrimaryKey( nNewsletterTemplateId, getPlugin( ) );
-
-        // Workgroup & RBAC permissions
-        if ( !AdminWorkgroupService.isAuthorized( newsLetterTemplate, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE,
-                Integer.toString( newsLetterTemplate.getId( ) ), NewsletterTemplateResourceIdService.PERMISSION_DELETE, (User) getUser( ) ) )
-        {
-            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_ERROR );
-        }
-
-        String strFileName = newsLetterTemplate.getFileKey( );
-        String strPictureName = newsLetterTemplate.getPictureKey( );
-
-        // removes the file
-        String strPathFileNewsletterTemplate = AppPathService.getPath( PROPERTY_PATH_TEMPLATE )
-                + AppPropertiesService.getProperty( NewsLetterConstants.PROPERTY_PATH_FILE_NEWSLETTER_TEMPLATE );
-        File file = new File( strPathFileNewsletterTemplate + NewsLetterConstants.CONSTANT_SLASH + strFileName );
-
-        if ( file.exists( ) )
-        {
-            file.delete( );
-        }
-
-        // removes the picture
-        String strPathImageNewsletterTemplate = AppPathService.getPath( PROPERTY_PATH_IMAGE_NEWSLETTER_TEMPLATE );
-        File picture = new File( strPathImageNewsletterTemplate + NewsLetterConstants.CONSTANT_SLASH + strPictureName );
-
-        if ( picture.exists( ) )
-        {
-            picture.delete( );
-        }
-
-        // removes the newsletter template from the database
-        NewsLetterTemplateHome.remove( nNewsletterTemplateId, getPlugin( ) );
-
-        // loads the newsletter templates management page
-        // If the operation occurred well returns on the info of the newsletter
-        UrlItem url = new UrlItem( JSP_URL_MANAGE_NEWSLETTER_TEMPLATES );
-
-        return url.getUrl( );
+        return redirectView( request, VIEW_MANAGE_TEMPLATES );
     }
 
     /**
@@ -839,43 +336,176 @@ public class NewsletterTemplateJspBean extends PluginAdminPageJspBean
     }
 
     /**
-     * Build a radio buttons list of template types from properties
+     * Builds the list of the template types: the newsletter type followed by the topic types
      * 
-     * @param locale
-     *            The locale
-     * @return the html code for the radio buttons list
+     * @return the list of the template types
      */
-    private ReferenceList buildTemplateTypeList( Locale locale )
+    private ReferenceList buildTemplateTypeList( )
     {
-        ReferenceList refTemplateTypeList = getNewsletterTopicService().getNewsletterTopicTypeRefList( locale );
+        ReferenceList refTemplateTypeList = _newsletterTopicService.getNewsletterTopicTypeRefList( getLocale( ) );
         ReferenceItem refItemTemplate = new ReferenceItem( );
         refItemTemplate.setCode( NewsLetterTemplate.RESOURCE_TYPE );
-        refItemTemplate.setName( I18nService.getLocalizedString( MESSAGE_NEWSLETTER_TEMPLATE, locale ) );
+        refItemTemplate.setName( I18nService.getLocalizedString( MESSAGE_NEWSLETTER_TEMPLATE, getLocale( ) ) );
         refTemplateTypeList.add( 0, refItemTemplate );
 
         return refTemplateTypeList;
     }
 
     /**
-     * Check if user is authorized to create a newsletter template
+     * Returns the description of the workgroup of a template
+     * 
+     * @param newsletterTemplate
+     *            the template
+     * @return the description of its workgroup, or the label of all the groups
+     */
+    private String getWorkgroupDescription( NewsLetterTemplate newsletterTemplate )
+    {
+        if ( NewsLetterConstants.ALL_GROUPS.equals( newsletterTemplate.getWorkgroup( ) ) )
+        {
+            return I18nService.getLocalizedString( NewsLetterConstants.PROPERTY_LABEL_ALL_GROUPS, getLocale( ) );
+        }
+
+        return AdminWorkgroupHome.findByPrimaryKey( newsletterTemplate.getWorkgroup( ) ).getDescription( );
+    }
+
+    /**
+     * Puts in the model the lists of the creation and modification form: template types, workgroups, files of the templates folder and pictures
+     * of the pictures folder
+     * 
+     * @param model
+     *            the model of the page
+     * @param request
+     *            the HTTP request
+     */
+    private void fillFormModel( Models model, HttpServletRequest request )
+    {
+        ReferenceList listPictures = new ReferenceList( );
+        listPictures.addItem( StringUtils.EMPTY, I18nService.getLocalizedString( MESSAGE_NO_PICTURE, getLocale( ) ) );
+        listPictures.addAll( _newsletterService.getTemplatePictureList( ) );
+
+        model.put( MARK_TEMPLATE_TYPE, buildTemplateTypeList( ) );
+        model.put( MARK_WORKGROUP_LIST, AdminWorkgroupService.getUserWorkgroups( getUser( ), getLocale( ) ) );
+        model.put( MARK_TEMPLATE_FILE_LIST, _newsletterService.getTemplateFileList( ) );
+        model.put( MARK_TEMPLATE_PICTURE_LIST, listPictures );
+        model.put( MARK_IMG_PATH, _newsletterService.getImageFolderPath( AppPathService.getBaseUrl( request ) ) );
+        model.put( MARK_AVAILABLE_PICTURES, new ArrayList<>( _newsletterService.getTemplatePictureList( ).toMap( ).keySet( ) ) );
+    }
+
+    /**
+     * Fills a newsletter template with the parameters of the creation or modification form
+     * 
+     * @param newsletterTemplate
+     *            the template to fill
+     * @param request
+     *            the HTTP request
+     */
+    private void populate( NewsLetterTemplate newsletterTemplate, HttpServletRequest request )
+    {
+        String strSectionNumber = request.getParameter( PARAMETER_TEMPLATE_SECTION );
+
+        newsletterTemplate.setTopicType( request.getParameter( PARAMETER_NEWSLETTER_TEMPLATE_TYPE ) );
+        newsletterTemplate.setDescription( StringUtils.trim( request.getParameter( PARAMETER_NEWSLETTER_TEMPLATE_NAME ) ) );
+        newsletterTemplate.setWorkgroup( request.getParameter( PARAMETER_NEWSLETTER_TEMPLATE_WORKGROUP ) );
+        newsletterTemplate.setTemplateName( request.getParameter( PARAMETER_TEMPLATE_FILE ) );
+        newsletterTemplate.setPictureKey( request.getParameter( PARAMETER_TEMPLATE_PICTURE ) );
+        newsletterTemplate.setSectionNumber(
+                StringUtils.isNumeric( strSectionNumber ) ? Math.max( DEFAULT_SECTION_NUMBER, Integer.parseInt( strSectionNumber ) ) : DEFAULT_SECTION_NUMBER );
+    }
+
+    /**
+     * Checks a newsletter template filled from the form: the mandatory fields are given, the file is one of the files of the templates folder and
+     * the picture, when given, one of the pictures of the pictures folder
+     * 
+     * @param newsletterTemplate
+     *            the template to check
+     * @return true if the template is valid, false otherwise
+     */
+    private boolean validate( NewsLetterTemplate newsletterTemplate )
+    {
+        return StringUtils.isNoneEmpty( newsletterTemplate.getTopicType( ), newsletterTemplate.getDescription( ), newsletterTemplate.getWorkgroup( ) )
+                && isTemplateFileAvailable( newsletterTemplate.getTemplateName( ) )
+                && ( StringUtils.isEmpty( newsletterTemplate.getPictureKey( ) )
+                        || _newsletterService.getTemplatePictureList( ).toMap( ).containsKey( newsletterTemplate.getPictureKey( ) ) );
+    }
+
+    /**
+     * Checks if a file is one of the files of the templates folder
+     * 
+     * @param strFileName
+     *            the name of the file
+     * @return true if the file is in the templates folder, false otherwise
+     */
+    private boolean isTemplateFileAvailable( String strFileName )
+    {
+        return StringUtils.isNotEmpty( strFileName ) && _newsletterService.getTemplateFileList( ).toMap( ).containsKey( strFileName );
+    }
+
+    /**
+     * Returns the newsletter template whose identifier is in the request
      * 
      * @param request
-     *            The {@link HttpServletRequest}
+     *            the HTTP request
+     * @return the template, or null when the identifier is missing, matches no template or a template outside the workgroups of the user
+     */
+    private NewsLetterTemplate findTemplate( HttpServletRequest request )
+    {
+        String strTemplateId = request.getParameter( PARAMETER_NEWSLETTER_TEMPLATE_ID );
+
+        if ( !StringUtils.isNumeric( strTemplateId ) )
+        {
+            return null;
+        }
+
+        NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( Integer.parseInt( strTemplateId ), getPlugin( ) );
+
+        return ( newsletterTemplate == null || newsletterTemplate.getId( ) == 0
+                || !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) ) ? null : newsletterTemplate;
+    }
+
+    /**
+     * Checks that a template exists and that the user holds its workgroup and a permission on it
+     * 
+     * @param request
+     *            the HTTP request
+     * @param newsletterTemplate
+     *            the template, may be null
+     * @param strPermission
+     *            the RBAC permission
+     * @return the URL of the error message, null when everything is fine
+     */
+    private String checkTemplate( HttpServletRequest request, NewsLetterTemplate newsletterTemplate, String strPermission )
+    {
+        if ( newsletterTemplate == null )
+        {
+            return AdminMessageService.getMessageUrl( request, MESSAGE_TEMPLATE_NOT_FOUND, AdminMessage.TYPE_STOP );
+        }
+
+        if ( !AdminWorkgroupService.isAuthorized( newsletterTemplate, (User) getUser( ) ) || !RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE,
+                Integer.toString( newsletterTemplate.getId( ) ), strPermission, (User) getUser( ) ) )
+        {
+            return AdminMessageService.getMessageUrl( request, Messages.USER_ACCESS_DENIED, AdminMessage.TYPE_STOP );
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if user is authorized to create a newsletter template
+     * 
      * @return true if creation is authorized, false otherwise
      */
-    private boolean isNewsletterTemplateCreationAllowed( HttpServletRequest request )
+    private boolean isNewsletterTemplateCreationAllowed( )
     {
-        User user = AdminUserService.getAdminUser( request );
+        User user = (User) getUser( );
+
         if ( RBACService.isAuthorized( NewsLetterTemplate.RESOURCE_TYPE, RBAC.WILDCARD_RESOURCES_ID, NewsletterTemplateResourceIdService.PERMISSION_CREATE,
                 user ) )
         {
             return true;
         }
 
-        Collection<NewsLetterTemplate> listNewsletterTemplates = NewsLetterTemplateHome.getTemplatesList( getPlugin( ) );
-        listNewsletterTemplates = AdminWorkgroupService.getAuthorizedCollection( listNewsletterTemplates, user );
-
-        for ( NewsLetterTemplate newsletterTemplate : listNewsletterTemplates )
+        for ( NewsLetterTemplate newsletterTemplate : AdminWorkgroupService.getAuthorizedCollection( NewsLetterTemplateHome.getTemplatesList( getPlugin( ) ),
+                user ) )
         {
             if ( RBACService.isAuthorized( newsletterTemplate, NewsletterTemplateResourceIdService.PERMISSION_CREATE, user ) )
             {
@@ -885,5 +515,4 @@ public class NewsletterTemplateJspBean extends PluginAdminPageJspBean
 
         return false;
     }
-
 }

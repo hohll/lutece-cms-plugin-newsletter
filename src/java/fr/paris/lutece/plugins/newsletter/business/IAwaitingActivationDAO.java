@@ -77,4 +77,14 @@ public interface IAwaitingActivationDAO
      * @return <b>true</b> if the pair already exists, <b>false</b> otherwise.
      */
     boolean exists( int nIdUser, int nKey, Plugin plugin );
+
+    /**
+     * Removes all the keys of a user
+     *
+     * @param nIdUser
+     *            the user id
+     * @param plugin
+     *            the plugin
+     */
+    void deleteByUser( int nIdUser, Plugin plugin );
 }

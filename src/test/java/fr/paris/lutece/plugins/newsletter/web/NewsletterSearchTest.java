@@ -33,12 +33,12 @@
  */
 package fr.paris.lutece.plugins.newsletter.web;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -50,34 +50,38 @@ import fr.paris.lutece.test.LuteceTestCase;
  */
 public class NewsletterSearchTest extends LuteceTestCase
 {
-    private static NewsLetter newsletter( String strName, LocalDateTime dateLastSending )
+    private static NewsLetter newsletter( String strName )
     {
         NewsLetter newsletter = new NewsLetter( );
         newsletter.setName( strName );
-        newsletter.setDateLastSending( dateLastSending == null ? null : Timestamp.valueOf( dateLastSending ) );
         return newsletter;
     }
 
-    private final List<NewsLetter> _list = Arrays.asList( newsletter( "Lettre de mars", LocalDateTime.of( 2026, 3, 2, 10, 0 ) ),
-            newsletter( "Lettre d'avril", LocalDateTime.of( 2026, 4, 6, 18, 30 ) ), newsletter( "Brouillon", null ) );
+    private static final Timestamp MARCH = Timestamp.valueOf( LocalDateTime.of( 2026, 3, 2, 10, 0 ) );
+    private static final Timestamp APRIL = Timestamp.valueOf( LocalDateTime.of( 2026, 4, 6, 18, 30 ) );
 
     @Test
     public void testNoSearchKeepsEverything( )
     {
-        assertEquals( 3, NewsletterJspBean.filterNewsletters( _list, null, "" ).size( ) );
+        assertTrue( NewsletterJspBean.matchesSearch( newsletter( "Brouillon" ), null, "", null ) );
+        assertTrue( NewsletterJspBean.matchesSearch( newsletter( "Lettre de mars" ), MARCH, null, null ) );
     }
 
     @Test
     public void testSearchByName( )
     {
-        assertEquals( 2, NewsletterJspBean.filterNewsletters( _list, "lettre", null ).size( ) );
+        assertTrue( NewsletterJspBean.matchesSearch( newsletter( "Lettre de mars" ), MARCH, "lettre", null ) );
+        assertFalse( NewsletterJspBean.matchesSearch( newsletter( "Brouillon" ), null, "lettre", null ) );
     }
 
     @Test
     public void testSearchByDate( )
     {
-        assertEquals( "Lettre d'avril", NewsletterJspBean.filterNewsletters( _list, null, "2026-04-06" ).iterator( ).next( ).getName( ) );
-        assertEquals( 1, NewsletterJspBean.filterNewsletters( _list, null, "02/03/2026" ).size( ) );
-        assertEquals( 0, NewsletterJspBean.filterNewsletters( _list, "avril", "2026-03-02" ).size( ) );
+        LocalDate april = LocalDate.of( 2026, 4, 6 );
+        assertTrue( NewsletterJspBean.matchesSearch( newsletter( "Lettre d'avril" ), APRIL, null, april ) );
+        assertFalse( NewsletterJspBean.matchesSearch( newsletter( "Lettre de mars" ), MARCH, null, april ) );
+        assertFalse( NewsletterJspBean.matchesSearch( newsletter( "Brouillon" ), null, null, april ) );
+        assertTrue( NewsletterJspBean.matchesSearch( newsletter( "Lettre d'avril" ), APRIL, null, LocalDate.of( 2026, 3, 2 ) ) );
+        assertFalse( NewsletterJspBean.matchesSearch( newsletter( "Lettre d'avril" ), APRIL, "mars", LocalDate.of( 2026, 3, 2 ) ) );
     }
 }

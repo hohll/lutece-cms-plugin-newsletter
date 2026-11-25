@@ -52,9 +52,6 @@ public class NewsletterTemplateResourceIdService extends ResourceIdService
     /** Permission for creating a newsletter template */
     public static final String PERMISSION_CREATE = "CREATE";
 
-    /** Permission for deleting a newsletter template */
-    public static final String PERMISSION_DELETE = "DELETE";
-
     /** Permission for modifying a newsletter template */
     public static final String PERMISSION_MODIFY = "MODIFY";
 
@@ -63,7 +60,6 @@ public class NewsletterTemplateResourceIdService extends ResourceIdService
     // i18n properties
     private static final String PROPERTY_LABEL_RESOURCE_TYPE = "newsletter.newsletter_template.resourceType";
     private static final String PROPERTY_LABEL_CREATE = "newsletter.permission.newsletter_template.label.create";
-    private static final String PROPERTY_LABEL_DELETE = "newsletter.permission.newsletter_template.label.delete";
     private static final String PROPERTY_LABEL_MODIFY = "newsletter.permission.newsletter_template.label.modify";
 
     /** Creates a new instance of NewsletterTemplateResourceIdService */
@@ -86,11 +82,6 @@ public class NewsletterTemplateResourceIdService extends ResourceIdService
         Permission p = new Permission( );
         p.setPermissionKey( PERMISSION_CREATE );
         p.setPermissionTitleKey( PROPERTY_LABEL_CREATE );
-        rt.registerPermission( p );
-
-        p = new Permission( );
-        p.setPermissionKey( PERMISSION_DELETE );
-        p.setPermissionTitleKey( PROPERTY_LABEL_DELETE );
         rt.registerPermission( p );
 
         p = new Permission( );

@@ -37,7 +37,10 @@ import fr.paris.lutece.plugins.newsletter.util.NewsLetterConstants;
 import fr.paris.lutece.portal.service.plugin.Plugin;
 import jakarta.enterprise.inject.spi.CDI;
 
+import java.sql.Timestamp;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 /**
  * This class provides instacnes management methods (create, find, ...) for Subscriber objects
@@ -218,5 +221,109 @@ public final class SubscriberHome
     public static Collection<Subscriber> getSubscribersList( Plugin plugin )
     {
         return _dao.selectSubscribersList( plugin );
+    }
+
+    /**
+     * Changes the status of a subscriber, when it is not already the given one
+     *
+     * @param nIdSubscriber
+     *            the subscriber's identifier
+     * @param nStatus
+     *            {@link Subscriber#STATUS_ACTIVE} or {@link Subscriber#STATUS_SUSPENDED}
+     * @param plugin
+     *            the plugin
+     * @return true if the status changed, false if the subscriber does not exist or already had this status
+     */
+    public static boolean updateStatus( int nIdSubscriber, int nStatus, Plugin plugin )
+    {
+        return _dao.updateStatus( nIdSubscriber, nStatus, new Timestamp( System.currentTimeMillis( ) ), plugin );
+    }
+
+    /**
+     * Finds the identifiers of the subscribers matching a filter, sorted by email
+     *
+     * @param filter
+     *            the filter
+     * @param plugin
+     *            the plugin
+     * @return the identifiers of the subscribers
+     */
+    public static List<Integer> findIdsByFilter( SubscriberFilter filter, Plugin plugin )
+    {
+        return _dao.selectIdsByFilter( filter, plugin );
+    }
+
+    /**
+     * Counts the subscribers of some newsletters: all of them, the active ones, the suspended ones and the ones having a subscription awaiting
+     * their confirmation
+     *
+     * @param listIdNewsletters
+     *            the identifiers of the newsletters
+     * @param plugin
+     *            the plugin
+     * @return the figures
+     */
+    public static SubscriberStatistics findStatistics( List<Integer> listIdNewsletters, Plugin plugin )
+    {
+        return _dao.selectStatistics( listIdNewsletters, plugin );
+    }
+
+    /**
+     * Loads subscribers from their identifiers
+     *
+     * @param listIds
+     *            the identifiers
+     * @param plugin
+     *            the plugin
+     * @return the subscribers, in the order of the identifiers
+     */
+    public static List<Subscriber> findByIds( List<Integer> listIds, Plugin plugin )
+    {
+        return _dao.selectByIds( listIds, plugin );
+    }
+
+    /**
+     * Counts, for each subscriber, its subscriptions to some newsletters
+     *
+     * @param listIdSubscribers
+     *            the identifiers of the subscribers
+     * @param listIdNewsletters
+     *            the identifiers of the newsletters taken into account
+     * @param plugin
+     *            the plugin
+     * @return for each subscriber having a subscription, the number of its subscriptions and the number of the confirmed ones
+     */
+    public static Map<Integer, Pair<Integer, Integer>> findSubscriptionCounts( List<Integer> listIdSubscribers, List<Integer> listIdNewsletters,
+            Plugin plugin )
+    {
+        return _dao.selectSubscriptionCounts( listIdSubscribers, listIdNewsletters, plugin );
+    }
+
+    /**
+     * Loads the subscriptions of a subscriber, sorted by newsletter name
+     *
+     * @param nIdSubscriber
+     *            the subscriber's identifier
+     * @param plugin
+     *            the plugin
+     * @return the subscriptions
+     */
+    public static List<Subscription> findSubscriptions( int nIdSubscriber, Plugin plugin )
+    {
+        return _dao.selectSubscriptions( nIdSubscriber, plugin );
+    }
+
+    /**
+     * Finds the newsletters a subscriber did not confirm his subscription to
+     *
+     * @param nIdSubscriber
+     *            the subscriber's identifier
+     * @param plugin
+     *            the plugin
+     * @return the identifiers of the newsletters
+     */
+    public static List<Integer> findPendingNewsletterIds( int nIdSubscriber, Plugin plugin )
+    {
+        return _dao.selectPendingNewsletterIds( nIdSubscriber, plugin );
     }
 }

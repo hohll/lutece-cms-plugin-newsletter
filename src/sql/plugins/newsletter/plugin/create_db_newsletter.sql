@@ -148,3 +148,21 @@ CREATE TABLE newsletter_portlet_subscribe (
 	id_newsletter INT DEFAULT '0' NOT NULL,  
 	PRIMARY KEY (id_portlet,id_newsletter)
 );
+
+-- changeset newsletter:create_db_newsletter.sql-rev1.sql
+-- preconditions onFail:MARK_RAN onError:WARN
+-- precondition-sql-check expectedResult:1 SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = database() AND table_name = 'newsletter_template' AND column_name = 'template_file_key'
+--
+-- The template of a newsletter is designated by its name: the name of a file of the folder WEB-INF/templates/skin/plugins/newsletter/templates
+--
+ALTER TABLE newsletter_template RENAME COLUMN template_file_key TO template_name;
+
+-- changeset newsletter:create_db_newsletter.sql-rev2.sql
+-- preconditions onFail:MARK_RAN onError:WARN
+-- precondition-sql-check expectedResult:0 SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = database() AND table_name = 'newsletter_subscriber_details' AND column_name = 'status'
+--
+-- A subscriber can be suspended: it keeps its subscriptions but receives no newsletter (status 1 active, 0 suspended)
+--
+ALTER TABLE newsletter_subscriber_details ADD COLUMN status SMALLINT DEFAULT 1 NOT NULL;
+ALTER TABLE newsletter_subscriber_details ADD COLUMN date_status_update TIMESTAMP NULL;
+CREATE INDEX index_newsletter_subscriber_confirmed ON newsletter_subscriber (id_newsletter, confirmed);

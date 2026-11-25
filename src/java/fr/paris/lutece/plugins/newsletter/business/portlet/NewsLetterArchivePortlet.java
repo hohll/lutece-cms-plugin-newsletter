@@ -33,6 +33,7 @@
  */
 package fr.paris.lutece.plugins.newsletter.business.portlet;
 
+import jakarta.enterprise.inject.spi.CDI;
 import fr.paris.lutece.plugins.newsletter.business.SendingNewsLetter;
 import fr.paris.lutece.plugins.newsletter.business.SendingNewsLetterHome;
 import fr.paris.lutece.plugins.newsletter.service.NewsletterPlugin;
@@ -64,7 +65,7 @@ public class NewsLetterArchivePortlet extends PortletHtmlContent
      */
     public NewsLetterArchivePortlet( )
     {
-        setPortletTypeId( NewsLetterArchivePortletHome.getInstance( ).getPortletTypeId( ) );
+        setPortletTypeId( CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).getPortletTypeId( ) );
     }
 
     /**
@@ -89,7 +90,7 @@ public class NewsLetterArchivePortlet extends PortletHtmlContent
      */
     public void update( )
     {
-        NewsLetterArchivePortletHome.getInstance( ).update( this );
+        CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).update( this );
     }
 
     /**
@@ -98,6 +99,6 @@ public class NewsLetterArchivePortlet extends PortletHtmlContent
     @Override
     public void remove( )
     {
-        NewsLetterArchivePortletHome.getInstance( ).remove( this );
+        CDI.current( ).select( NewsLetterArchivePortletHome.class ).get( ).remove( this );
     }
 }

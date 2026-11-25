@@ -35,7 +35,10 @@ package fr.paris.lutece.plugins.newsletter.business;
 
 import fr.paris.lutece.portal.service.plugin.Plugin;
 
+import java.sql.Timestamp;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 /**
  * The interface representing the business methods of the subscriber
@@ -157,4 +160,88 @@ public interface ISubscriberDAO
      * @return a collection of subscribers
      */
     Collection<Subscriber> selectSubscribersList( Plugin plugin );
+
+    /**
+     * Changes the status of a subscriber, when it is not already the given one
+     *
+     * @param nIdSubscriber
+     *            the subscriber's identifier
+     * @param nStatus
+     *            the new status
+     * @param dateStatusUpdate
+     *            the date of the change
+     * @param plugin
+     *            the Plugin
+     * @return true if the status changed, false if the subscriber does not exist or already had this status
+     */
+    boolean updateStatus( int nIdSubscriber, int nStatus, Timestamp dateStatusUpdate, Plugin plugin );
+
+    /**
+     * Finds the identifiers of the subscribers matching a filter, sorted by email
+     *
+     * @param filter
+     *            the filter
+     * @param plugin
+     *            the Plugin
+     * @return the identifiers of the subscribers, empty when the filter allows no newsletter
+     */
+    List<Integer> selectIdsByFilter( SubscriberFilter filter, Plugin plugin );
+
+    /**
+     * Counts the subscribers of some newsletters: all of them, the active ones, the suspended ones and the ones having a subscription awaiting
+     * their confirmation
+     *
+     * @param listIdNewsletters
+     *            the identifiers of the newsletters
+     * @param plugin
+     *            the Plugin
+     * @return the figures, all zero when the list of the newsletters is empty
+     */
+    SubscriberStatistics selectStatistics( List<Integer> listIdNewsletters, Plugin plugin );
+
+    /**
+     * Loads subscribers from their identifiers
+     *
+     * @param listIds
+     *            the identifiers
+     * @param plugin
+     *            the Plugin
+     * @return the subscribers, in the order of the identifiers
+     */
+    List<Subscriber> selectByIds( List<Integer> listIds, Plugin plugin );
+
+    /**
+     * Counts, for each subscriber, its subscriptions to some newsletters
+     *
+     * @param listIdSubscribers
+     *            the identifiers of the subscribers
+     * @param listIdNewsletters
+     *            the identifiers of the newsletters taken into account
+     * @param plugin
+     *            the Plugin
+     * @return for each subscriber having a subscription, the number of its subscriptions and the number of the confirmed ones
+     */
+    Map<Integer, Pair<Integer, Integer>> selectSubscriptionCounts( List<Integer> listIdSubscribers, List<Integer> listIdNewsletters, Plugin plugin );
+
+    /**
+     * Loads the subscriptions of a subscriber, sorted by newsletter name
+     *
+     * @param nIdSubscriber
+     *            the subscriber's identifier
+     * @param plugin
+     *            the Plugin
+     * @return the subscriptions
+     */
+    List<Subscription> selectSubscriptions( int nIdSubscriber, Plugin plugin );
+
+    /**
+     * Finds the newsletters a subscriber did not confirm his subscription to
+     *
+     * @param nIdSubscriber
+     *            the subscriber's identifier
+     * @param plugin
+     *            the Plugin
+     * @return the identifiers of the newsletters
+     */
+    List<Integer> selectPendingNewsletterIds( int nIdSubscriber, Plugin plugin );
 }

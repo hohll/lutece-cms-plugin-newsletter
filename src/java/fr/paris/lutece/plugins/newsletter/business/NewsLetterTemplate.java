@@ -50,7 +50,7 @@ public class NewsLetterTemplate implements AdminWorkgroupResource, RBACResource
     private int _nId;
     private String _strTopicType;
     private String _strDescription;
-    private String strFileKey;
+    private String _strTemplateName;
     private String _strPictureKey;
     private String _strWorkgroup;
     private int _nSectionNumber;
@@ -119,24 +119,50 @@ public class NewsLetterTemplate implements AdminWorkgroupResource, RBACResource
     }
 
     /**
-     * Returns the file name of the template
+     * Returns the name of the template, kept for the modules built against the former file key
      * 
-     * @return the template file name
+     * @return the template name
+     * @deprecated use {@link #getTemplateName( )}
      */
+    @Deprecated
     public String getFileKey( )
     {
-        return strFileKey;
+        return getTemplateName( );
     }
 
     /**
-     * Sets the file name of the template
+     * Sets the name of the template, kept for the modules built against the former file key
      * 
      * @param strFileName
-     *            the template file name
+     *            the template name
+     * @deprecated use {@link #setTemplateName( String )}
      */
+    @Deprecated
     public void setFileKey( String strFileName )
     {
-        strFileKey = ( strFileName == null ) ? EMPTY_STRING : strFileName;
+        setTemplateName( strFileName );
+    }
+
+    /**
+     * Returns the name of the template: the name of a file of the folder of the newsletter templates of the webapp
+     * (WEB-INF/templates/skin/plugins/newsletter/templates)
+     * 
+     * @return the template name
+     */
+    public String getTemplateName( )
+    {
+        return _strTemplateName;
+    }
+
+    /**
+     * Sets the name of the template: the name of a file of the folder of the newsletter templates of the webapp
+     * 
+     * @param strTemplateName
+     *            the template name
+     */
+    public void setTemplateName( String strTemplateName )
+    {
+        _strTemplateName = ( strTemplateName == null ) ? EMPTY_STRING : strTemplateName;
     }
 
     /**

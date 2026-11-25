@@ -35,9 +35,12 @@ package fr.paris.lutece.plugins.newsletter.util;
 
 import fr.paris.lutece.plugins.newsletter.business.NewsLetterTemplate;
 import fr.paris.lutece.plugins.newsletter.business.NewsLetterTemplateHome;
+import fr.paris.lutece.plugins.resource.loader.ResourceNotFoundException;
 import fr.paris.lutece.portal.service.html.EncodingService;
 import fr.paris.lutece.portal.service.i18n.I18nService;
 import fr.paris.lutece.portal.service.plugin.Plugin;
+import fr.paris.lutece.portal.service.util.AppLogService;
+import fr.paris.lutece.portal.service.util.AppPathService;
 import fr.paris.lutece.portal.service.util.AppPropertiesService;
 import fr.paris.lutece.util.string.StringUtil;
 import fr.paris.lutece.util.url.UrlItem;
@@ -56,6 +59,8 @@ import java.util.Optional;
  */
 public final class NewsletterUtils
 {
+    private static final String PROPERTY_PATH_TEMPLATES = "path.templates";
+
     /**
      * Private constructor
      */
@@ -64,26 +69,38 @@ public final class NewsletterUtils
     }
 
     /**
-     * Retrieve the html template for the given template id
+     * Retrieve the path of the html template for the given template id. The file of a template is read from the folder of the newsletter templates
+     * of the webapp (property newsletter.path.file.newsletter.template), under the name recorded for the template.
      * 
      * @param nTemplateId
      *            the id of the template to retrieve
      * @param plugin
      *            the plugin
-     * @return the html template to use of null if no NewsletterTemplate found for this Id
+     * @return the path of the html template, relative to the templates folder, or null if no NewsletterTemplate is found for this Id or if its
+     *         file is missing from the file system
      */
     public static String getHtmlTemplatePath( int nTemplateId, Plugin plugin )
     {
         NewsLetterTemplate newsletterTemplate = NewsLetterTemplateHome.findByPrimaryKey( nTemplateId, plugin );
 
-        if ( ( newsletterTemplate == null ) || StringUtils.isEmpty( newsletterTemplate.getFileKey( ) ) )
+        if ( ( newsletterTemplate == null ) || StringUtils.isEmpty( newsletterTemplate.getTemplateName( ) ) )
         {
             return null;
         }
 
-        String strTemplatePathName = AppPropertiesService.getProperty( NewsLetterConstants.PROPERTY_PATH_FILE_NEWSLETTER_TEMPLATE );
-        strTemplatePathName += NewsLetterConstants.CONSTANT_SLASH;
-        strTemplatePathName += newsletterTemplate.getFileKey( );
+        String strTemplatePathName = AppPropertiesService.getProperty( NewsLetterConstants.PROPERTY_PATH_FILE_NEWSLETTER_TEMPLATE )
+                + NewsLetterConstants.CONSTANT_SLASH + newsletterTemplate.getTemplateName( );
+
+        try
+        {
+            AppPathService.getLuteceResource( AppPropertiesService.getProperty( PROPERTY_PATH_TEMPLATES ) + strTemplatePathName );
+        }
+        catch( ResourceNotFoundException e )
+        {
+            AppLogService.error( "The file {} of the newsletter template {} is missing from the file system", strTemplatePathName, nTemplateId );
+
+            return null;
+        }
 
         return strTemplatePathName;
     }

@@ -35,6 +35,7 @@ package fr.paris.lutece.plugins.newsletter.service;
 
 import fr.paris.lutece.plugins.newsletter.business.NewsLetter;
 import fr.paris.lutece.plugins.newsletter.business.NewsLetterHome;
+import fr.paris.lutece.plugins.newsletter.business.NewsLetterTemplate;
 import fr.paris.lutece.plugins.newsletter.business.Subscriber;
 import fr.paris.lutece.plugins.newsletter.business.SubscriberHome;
 import fr.paris.lutece.plugins.newsletter.business.topic.NewsletterTopic;
@@ -43,8 +44,9 @@ import fr.paris.lutece.plugins.newsletter.service.topic.INewsletterTopicService;
 import fr.paris.lutece.plugins.newsletter.service.topic.NewsletterTopicService;
 import fr.paris.lutece.plugins.newsletter.util.NewsLetterConstants;
 import fr.paris.lutece.plugins.newsletter.util.NewsletterUtils;
-import fr.paris.lutece.plugins.newsletter.business.NewsLetterTemplateHome;
+import fr.paris.lutece.plugins.resource.loader.ResourceNotFoundException;
 import fr.paris.lutece.portal.business.user.AdminUser;
+import fr.paris.lutece.portal.service.i18n.I18nService;
 import fr.paris.lutece.portal.service.mail.MailService;
 import fr.paris.lutece.portal.service.plugin.Plugin;
 import fr.paris.lutece.portal.service.plugin.PluginService;
@@ -53,10 +55,12 @@ import fr.paris.lutece.portal.service.template.HtmlMarkup;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import fr.paris.lutece.portal.service.util.AppLogService;
 import fr.paris.lutece.portal.service.util.AppPathService;
-import fr.paris.lutece.portal.service.util.AppPropertiesService;
 import fr.paris.lutece.portal.service.util.CryptoService;
+import fr.paris.lutece.util.ReferenceList;
+import fr.paris.lutece.util.file.FileUtil;
 import fr.paris.lutece.util.html.HtmlTemplate;
 import fr.paris.lutece.util.mail.UrlAttachment;
 import fr.paris.lutece.util.string.StringUtil;
@@ -67,6 +71,10 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
+import java.net.URL;
+import java.net.URLDecoder;
+import java.text.MessageFormat;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -75,8 +83,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Strings;
+import org.apache.commons.text.StringEscapeUtils;
 
 import com.opencsv.CSVWriter;
 
@@ -97,14 +111,46 @@ public class NewsletterService implements Serializable
      */
     private static final long serialVersionUID = 1644159439192572037L;
 
-    // PROPERTIES
-    private static final String PROPERTY_ABSOLUTE_URL_MAIL = "newsletter.absolute.mail.url";
-    private static final String PROPERTY_PATH_IMAGE_NEWSLETTER_TEMPLATE = "newsletter.path.image.newsletter.template";
-    private static final String PROPERTY_NO_SECURED_IMG_FOLDER = "newsletter.nosecured.img.folder.name";
-    private static final String PROPERTY_WEBAPP_PATH = "newsletter.nosecured.webapp.path";
-    private static final String PROPERTY_NO_SECURED_IMG_OPTION = "newsletter.nosecured.img.option";
-    private static final String PROPERTY_UNSUBSCRIBE_KEY_ENCRYPTION_ALGORITHM = "newsletter.unsubscribe.key.encryptionAlgorithm";
+    private static final String MESSAGE_PREVIEW_EMPTY_TOPIC = "newsletter.manage_topics.previewEmptyTopic";
+    private static final String TEMPLATE_PREVIEW_SECTION = "<div data-newsletter-section=\"{0}\">{1}</div>";
+    private static final String TEMPLATE_PREVIEW_TOPIC = "<div data-newsletter-topic=\"{0}\">{1}</div>";
+    private static final String TEMPLATE_PREVIEW_EMPTY_TOPIC = "<div style=\"margin:6px 0;padding:8px 10px;border-radius:4px;background:#fdf3e3;color:#7a5410;font:13px sans-serif\">{0}</div>";
 
+    // PROPERTIES
+
+    @Inject
+    @ConfigProperty( name = "newsletter.absolute.mail.url", defaultValue = "true" )
+    private String _strAbsoluteUrlMail;
+    @Inject
+    @ConfigProperty( name = NewsLetterConstants.PROPERTY_MAIL_MULTIPART, defaultValue = "true" )
+    private String _strMailMultipart;
+    @Inject
+    @ConfigProperty( name = NewsLetterConstants.PROPERTY_PATH_FILE_NEWSLETTER_TEMPLATE, defaultValue = "/skin/plugins/newsletter/templates" )
+    private String _strPathFileNewsletterTemplate;
+    @Inject
+    @ConfigProperty( name = "newsletter.path.image.newsletter.template", defaultValue = "/themes/admin/shared/plugins/newsletter/images/newsletter_templates" )
+    private String _strPathImageNewsletterTemplate;
+    @Inject
+    @ConfigProperty( name = "newsletter.nosecured.img.option", defaultValue = "false" )
+    private boolean _bNoSecuredImgOption;
+    @Inject
+    @ConfigProperty( name = "newsletter.nosecured.img.folder.name", defaultValue = "unsecuredimg" )
+    private String _strNoSecuredImgFolder;
+    @Inject
+    @ConfigProperty( name = "newsletter.unsubscribe.key.encryptionAlgorithm", defaultValue = "SHA-256" )
+    private String _strUnsubscribeKeyEncryptionAlgorithm;
+    @Inject
+    @ConfigProperty( name = "path.templates", defaultValue = "/WEB-INF/templates" )
+    private String _strPathTemplates;
+    @Inject
+    @ConfigProperty( name = "newsletter.nosecured.webapp.path" )
+    private Optional<String> _strNoSecuredWebappPath;
+    @Inject
+    @ConfigProperty( name = "lutece.prod.url" )
+    private Optional<String> _strProdUrl;
+    @Inject
+    @ConfigProperty( name = "newsletter.css.files" )
+    private Optional<String> _strCssFiles;
     @Inject
     private transient NewsletterTopicService _newsletterTopicService;
 
@@ -183,7 +229,7 @@ public class NewsletterService implements Serializable
     public boolean isAbsoluteUrl( )
     {
         boolean useAbsoluteUrl = false;
-        String strUseAbsoluteUrl = AppPropertiesService.getProperty( PROPERTY_ABSOLUTE_URL_MAIL );
+        String strUseAbsoluteUrl = _strAbsoluteUrlMail;
 
         if ( ( strUseAbsoluteUrl != null ) && strUseAbsoluteUrl.equalsIgnoreCase( Boolean.TRUE.toString( ) ) )
         {
@@ -200,7 +246,7 @@ public class NewsletterService implements Serializable
      */
     public boolean isMhtmlActivated( )
     {
-        String strProperty = AppPropertiesService.getProperty( NewsLetterConstants.PROPERTY_MAIL_MULTIPART );
+        String strProperty = _strMailMultipart;
         return ( strProperty != null ) && Boolean.valueOf( strProperty ).booleanValue( );
     }
 
@@ -298,96 +344,170 @@ public class NewsletterService implements Serializable
      */
     public String generateNewsletterHtmlCode( NewsLetter newsletter, int nTemplateNewsLetterId, String strBaseUrl, AdminUser user, Locale locale )
     {
+        return buildNewsletterHtmlCode( newsletter, nTemplateNewsLetterId, strBaseUrl, locale,
+                topic -> getNewsletterTopicService( ).getTopicContent( topic, user, locale ), false );
+    }
+
+    /**
+     * Generate the html code of the preview of a newsletter, shown in the back office while its content is configured. Each section and each topic
+     * is wrapped in an element carrying its number or its id (data-newsletter-section, data-newsletter-topic), so that the page can outline and
+     * highlight them, and a topic without content is replaced by a notice. This html must never be sent.
+     *
+     * @param newsletter
+     *            The newsletter
+     * @param mapTopicContents
+     *            The content already generated for each topic of the newsletter, by topic id
+     * @param strBaseUrl
+     *            The base url of the portal
+     * @param locale
+     *            The locale
+     * @return The html code of the preview, or null if the template of the newsletter is not available
+     */
+    public String generateNewsletterPreviewHtmlCode( NewsLetter newsletter, Map<Integer, String> mapTopicContents, String strBaseUrl, Locale locale )
+    {
+        return buildNewsletterHtmlCode( newsletter, newsletter.getNewsLetterTemplateId( ), strBaseUrl, locale, topic -> {
+            String strContent = mapTopicContents.get( topic.getId( ) );
+            if ( StringUtils.isBlank( strContent ) )
+            {
+                strContent = MessageFormat.format( TEMPLATE_PREVIEW_EMPTY_TOPIC, I18nService.getLocalizedString( MESSAGE_PREVIEW_EMPTY_TOPIC,
+                        new Object [ ] { StringEscapeUtils.escapeHtml4( StringUtils.defaultString( topic.getTitle( ) ) ) }, locale ) );
+            }
+            return MessageFormat.format( TEMPLATE_PREVIEW_TOPIC, Integer.toString( topic.getId( ) ), strContent );
+        }, true );
+    }
+
+    /**
+     * Generate the html code of a newsletter from its template, the content of each section being the content of its topics in their order
+     *
+     * @param newsletter
+     *            The newsletter
+     * @param nTemplateNewsLetterId
+     *            The id of the template of the newsletter
+     * @param strBaseUrl
+     *            The base url of the portal
+     * @param locale
+     *            The locale
+     * @param topicContent
+     *            Gives the html content of a topic
+     * @param bPreview
+     *            True to wrap each section in an element carrying its number
+     * @return The html code, or null if the template is not available
+     */
+    private String buildNewsletterHtmlCode( NewsLetter newsletter, int nTemplateNewsLetterId, String strBaseUrl, Locale locale,
+            Function<NewsletterTopic, String> topicContent, boolean bPreview )
+    {
         String strTemplatePath = NewsletterUtils.getHtmlTemplatePath( nTemplateNewsLetterId, getPlugin( ) );
-        // String strDocumentPath = generateDocumentsList( nNewsLetterId, nTemplateDocumentId, strBaseUrl );
 
         if ( strTemplatePath == null )
         {
             return null;
         }
 
-        Map<String, Object> model = new HashMap<String, Object>( );
         List<NewsletterTopic> listTopics = NewsletterTopicHome.findAllByIdNewsletter( newsletter.getId( ), getPlugin( ) );
 
         // We sort the elements so that they are ordered by section and order.
         Collections.sort( listTopics );
 
-        int nCurrentSection = 0;
+        // A topic whose section is beyond the sections of the template is not displayed
         String [ ] strContentBySection = new String [ newsletter.getNbSections( )];
-        List<NewsletterTopic> listSelectedTopics = new ArrayList<NewsletterTopic>( );
-        for ( int i = 0; i < listTopics.size( ) + 1; i++ )
+        for ( int nSection = 1; nSection <= strContentBySection.length; nSection++ )
         {
-            NewsletterTopic newsletterTopic = null;
-            if ( i < listTopics.size( ) )
+            StringBuilder sbSectionContent = new StringBuilder( );
+            for ( NewsletterTopic topic : listTopics )
             {
-                newsletterTopic = listTopics.get( i );
-            }
-            if ( newsletterTopic != null && newsletterTopic.getSection( ) == nCurrentSection )
-            {
-                listSelectedTopics.add( newsletterTopic );
-            }
-            else
-            {
-                if ( nCurrentSection != 0 )
+                if ( topic.getSection( ) == nSection )
                 {
-                    StringBuilder sbSectionContent = new StringBuilder( );
-                    for ( NewsletterTopic topic : listSelectedTopics )
-                    {
-                        sbSectionContent.append( getNewsletterTopicService( ).getTopicContent( topic, user, locale ) );
-                    }
-                    if ( nCurrentSection - 1 < strContentBySection.length )
-                    {
-                        strContentBySection [nCurrentSection - 1] = sbSectionContent.toString( );
-                    }
-                }
-                if ( newsletterTopic != null )
-                {
-                    nCurrentSection = newsletterTopic.getSection( );
-                    listSelectedTopics = new ArrayList<NewsletterTopic>( );
-                    listSelectedTopics.add( newsletterTopic );
+                    sbSectionContent.append( StringUtils.defaultString( topicContent.apply( topic ) ) );
                 }
             }
+            strContentBySection [nSection - 1] = bPreview ? MessageFormat.format( TEMPLATE_PREVIEW_SECTION, Integer.toString( nSection ), sbSectionContent )
+                    : sbSectionContent.toString( );
         }
 
-        // the topics give HTML: a section is markup, an empty section stays undefined
-        model.put( NewsLetterConstants.MARK_CONTENT, toMarkup( strContentBySection [0] ) );
+        Map<String, Object> model = new HashMap<>( );
+        if ( strContentBySection.length > 0 )
+        {
+            model.put( NewsLetterConstants.MARK_CONTENT, toMarkup( strContentBySection [0] ) );
+        }
         for ( int i = 0; i < strContentBySection.length; i++ )
         {
             model.put( NewsLetterConstants.MARK_CONTENT_SECTION + Integer.toString( i + 1 ), toMarkup( strContentBySection [i] ) );
         }
         model.put( NewsLetterConstants.MARK_BASE_URL, strBaseUrl );
 
-        HtmlTemplate templateNewsLetter = new HtmlTemplate( );
-        String templateFileKey = NewsLetterTemplateHome.findByPrimaryKey( nTemplateNewsLetterId, getPlugin( ) ).getFileKey();
-           // if template file key can be parsed as an int, it means it is not the name of the file
-            if ( templateFileKey != null && StringUtils.isNumeric( templateFileKey ) )
-            {
-                fr.paris.lutece.portal.business.file.File file = NewsletterFileService.getFileByKey( templateFileKey );
-                byte[] _bTemplate = file.getPhysicalFile().getValue( );
-
-                // convert byte array to html
-                String strTemplate = new String( _bTemplate );
-                templateNewsLetter = AppTemplateService.getTemplateFromStringFtl( strTemplate, locale, model );
-
-            }
-            else
-            {
-                 templateNewsLetter = AppTemplateService.getTemplate( strTemplatePath, locale, model );
-
-            }
+        HtmlTemplate templateNewsLetter = AppTemplateService.getTemplate( strTemplatePath, locale, model );
 
         return templateNewsLetter.getHtml( );
     }
+
     /**
-     * Marks the HTML of a section as markup for the template
+     * Returns the files of the folder of the newsletter templates (property newsletter.path.file.newsletter.template under the templates folder of
+     * the webapp) that a newsletter template can use. The folder is read through the servlet context, so every source folder of the webapp is
+     * listed (plugin, site, theme).
      * 
-     * @param strHtml
-     *            The HTML of the section, may be null
-     * @return The markup, or null if the section has no content
+     * @return the list of the file names, sorted by name
      */
-    private static Object toMarkup( String strHtml )
+    public ReferenceList getTemplateFileList( )
     {
-        return ( strHtml == null ) ? null : HtmlMarkup.of( strHtml );
+        return getFileList( _strPathTemplates + _strPathFileNewsletterTemplate, FileUtil::hasHtmlExtension );
+    }
+
+    /**
+     * Checks if the file of a newsletter template is present in the folder of the newsletter templates of the webapp
+     * 
+     * @param newsletterTemplate
+     *            the template
+     * @return true if the template has a name and the file of that name is in the folder, false otherwise
+     */
+    public boolean isTemplateAvailable( NewsLetterTemplate newsletterTemplate )
+    {
+        return newsletterTemplate != null && StringUtils.isNotEmpty( newsletterTemplate.getTemplateName( ) )
+                && getTemplateFileList( ).toMap( ).containsKey( newsletterTemplate.getTemplateName( ) );
+    }
+
+    /**
+     * Returns the pictures of the folder of the pictures of the newsletter templates (property newsletter.path.image.newsletter.template), read
+     * through the servlet context
+     * 
+     * @return the list of the picture file names, sorted by name
+     */
+    public ReferenceList getTemplatePictureList( )
+    {
+        return getFileList( _strPathImageNewsletterTemplate, FileUtil::hasImageExtension );
+    }
+
+    /**
+     * Returns the names of the files of a folder of the webapp accepted by a filter. The folder is listed through the servlet context, which merges
+     * every source folder of the webapp: a plain file system listing would only read the first one.
+     * 
+     * @param strFolder
+     *            the folder, relative to the root of the webapp
+     * @param filter
+     *            the filter on the file names
+     * @return the list of the file names, sorted by name, empty when the folder cannot be read
+     */
+    private static ReferenceList getFileList( String strFolder, Predicate<String> filter )
+    {
+        ReferenceList listFiles = new ReferenceList( );
+        String strPath = Strings.CS.appendIfMissing( strFolder, NewsLetterConstants.CONSTANT_SLASH );
+        Set<URL> setResources;
+
+        try
+        {
+            setResources = AppPathService.getResourceURLFromRelativePath( strPath );
+        }
+        catch( ResourceNotFoundException e )
+        {
+            AppLogService.error( "The folder {} of the newsletter templates cannot be read", strPath, e );
+
+            return listFiles;
+        }
+
+        setResources.stream( ).map( URL::getPath ).filter( strResource -> !strResource.endsWith( NewsLetterConstants.CONSTANT_SLASH ) )
+                .map( strResource -> URLDecoder.decode( StringUtils.substringAfterLast( strResource, NewsLetterConstants.CONSTANT_SLASH ), StandardCharsets.UTF_8 ) )
+                .filter( filter ).distinct( ).sorted( ).forEach( strName -> listFiles.addItem( strName, strName ) );
+
+        return listFiles;
     }
 
     /**
@@ -399,7 +519,7 @@ public class NewsletterService implements Serializable
      */
     public String getImageFolderPath( String strBaseUrl )
     {
-        return strBaseUrl + AppPropertiesService.getProperty( PROPERTY_PATH_IMAGE_NEWSLETTER_TEMPLATE );
+        return strBaseUrl + _strPathImageNewsletterTemplate;
     }
 
     /**
@@ -409,7 +529,7 @@ public class NewsletterService implements Serializable
      */
     public boolean useUnsecuredImages( )
     {
-        return Boolean.parseBoolean( AppPropertiesService.getProperty( PROPERTY_NO_SECURED_IMG_OPTION ) );
+        return _bNoSecuredImgOption;
     }
 
     /**
@@ -419,7 +539,7 @@ public class NewsletterService implements Serializable
      */
     public String getUnsecuredImagefolder( )
     {
-        return AppPropertiesService.getProperty( PROPERTY_NO_SECURED_IMG_FOLDER ) + NewsLetterConstants.CONSTANT_SLASH;
+        return _strNoSecuredImgFolder + NewsLetterConstants.CONSTANT_SLASH;
     }
 
     /**
@@ -429,7 +549,27 @@ public class NewsletterService implements Serializable
      */
     public String getUnsecuredFolderPath( )
     {
-        return AppPropertiesService.getProperty( PROPERTY_WEBAPP_PATH, AppPathService.getWebAppPath( ) + NewsLetterConstants.CONSTANT_SLASH );
+        return _strNoSecuredWebappPath.orElseGet( ( ) -> AppPathService.getWebAppPath( ) + NewsLetterConstants.CONSTANT_SLASH );
+    }
+
+    /**
+     * Returns the production url of the site (property lutece.prod.url)
+     *
+     * @return the production url, empty when none is configured
+     */
+    public String getProdUrl( )
+    {
+        return _strProdUrl.orElse( StringUtils.EMPTY );
+    }
+
+    /**
+     * Returns the stylesheets included in the newsletters (property newsletter.css.files)
+     *
+     * @return the names of the stylesheets separated by semicolons, empty when none is configured
+     */
+    public String getCssFiles( )
+    {
+        return _strCssFiles.orElse( StringUtils.EMPTY );
     }
 
     /**
@@ -442,7 +582,7 @@ public class NewsletterService implements Serializable
     public String getUnsubscriptionKey( String strEmail )
     {
         return CryptoService.encrypt( CryptoService.getCryptoKey( ) + strEmail,
-                AppPropertiesService.getProperty( PROPERTY_UNSUBSCRIBE_KEY_ENCRYPTION_ALGORITHM ) );
+                _strUnsubscribeKeyEncryptionAlgorithm );
     }
 
     /**
@@ -534,5 +674,17 @@ public class NewsletterService implements Serializable
                 }
             }
         } );
+    }
+
+    /**
+     * Marks the HTML built by the application as markup for the template (auto-escaping)
+     *
+     * @param strHtml
+     *            The HTML, may be null
+     * @return The markup, or null if there is no HTML
+     */
+    private static Object toMarkup( String strHtml )
+    {
+        return ( strHtml == null ) ? null : HtmlMarkup.of( strHtml );
     }
 }

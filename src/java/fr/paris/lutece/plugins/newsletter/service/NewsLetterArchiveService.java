@@ -33,6 +33,7 @@
  */
 package fr.paris.lutece.plugins.newsletter.service;
 
+import jakarta.inject.Named;
 import fr.paris.lutece.plugins.newsletter.business.SendingNewsLetter;
 import fr.paris.lutece.plugins.newsletter.business.SendingNewsLetterHome;
 import fr.paris.lutece.plugins.newsletter.util.NewsLetterConstants;
@@ -49,6 +50,8 @@ import fr.paris.lutece.util.html.HtmlTemplate;
 import java.util.Map;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import java.io.IOException;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.apache.commons.lang3.StringUtils;
@@ -59,6 +62,7 @@ import static fr.paris.lutece.portal.service.admin.AdminUserService.getLocale;
  * The service that renders the archived newsletters
  */
 @ApplicationScoped
+@Named( "newsletterArchiveService" )
 public class NewsLetterArchiveService
 {
     private static final String REGEX_ID = "^[\\d]+$";
@@ -102,5 +106,31 @@ public class NewsLetterArchiveService
         template.substitute( NewsLetterConstants.WEBAPP_PATH_FOR_LINKSERVICE, strBaseUrl );
 
         return template.getHtml( );
+    }
+
+    /**
+     * Returns the page of an archive of newsletter, for the JSP that shows it. A missing or unknown archive sets a site message and redirects to
+     * the portal, which shows it.
+     *
+     * @param request
+     *            the HTTP request
+     * @param response
+     *            the HTTP response
+     * @return the page, empty when the response has been redirected to the site message
+     * @throws IOException
+     *             if the redirection fails
+     */
+    public String getShowArchivePage( HttpServletRequest request, HttpServletResponse response ) throws IOException
+    {
+        try
+        {
+            return getShowArchivePage( request );
+        }
+        catch( SiteMessageException e )
+        {
+            response.sendRedirect( AppPathService.getBaseUrl( request ) );
+
+            return StringUtils.EMPTY;
+        }
     }
 }
