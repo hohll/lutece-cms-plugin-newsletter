@@ -123,7 +123,7 @@ public class NewsletterTemplatesRenderTest extends LuteceTestCase
         model.put( "content_1", HtmlMarkup.of( SECTION_1 ) );
         model.put( "content_2", HtmlMarkup.of( SECTION_2 ) );
         model.put( "content_3", HtmlMarkup.of( "" ) );
-        model.put( "base_url", "https://example.org/site" );
+        model.put( "base_url", "https://example.org/site/" );
 
         String strHtml = render( TEMPLATE_MODEL, model );
 
@@ -131,7 +131,7 @@ public class NewsletterTemplatesRenderTest extends LuteceTestCase
         assertTrue( strHtml.contains( SECTION_2 ), strHtml );
         assertFalse( strHtml.contains( "&lt;" ), strHtml );
         assertFalse( strHtml.contains( "1 Column Text : BEGIN" ), "an empty section should be left out: " + strHtml );
-        assertTrue( strHtml.contains( "src=\"https://example.org/site/images/poweredby.png\"" ), strHtml );
+        assertTrue( strHtml.contains( "src=\"https://example.org/site/themes/skin/shared/images/poweredby.png\"" ), strHtml );
     }
 
     /**
