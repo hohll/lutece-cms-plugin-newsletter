@@ -3,8 +3,6 @@
 <%@page import="fr.paris.lutece.portal.service.util.AppPathService"%>
 <jsp:include page="../../PortalHeader.jsp" />
 
-
-
 <%@page import="jakarta.enterprise.inject.spi.CDI"%>
 <%@page import="fr.paris.lutece.plugins.newsletter.web.NewsLetterApp"%>
 <%-- The XPage is a CDI bean: jsp:useBean would create it without its injected services --%>
