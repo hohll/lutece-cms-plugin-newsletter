@@ -33,7 +33,7 @@ DROP TABLE IF EXISTS newsletter_template;
 CREATE TABLE newsletter_template (
   id_template INT DEFAULT '0' NOT NULL,
   description VARCHAR(50) DEFAULT NULL,
-  template_file_key VARCHAR(100) DEFAULT NULL,
+  template_name VARCHAR(100) DEFAULT NULL,
   picture_file_key VARCHAR(100) DEFAULT NULL,
   workgroup_key VARCHAR(50) DEFAULT NULL,
   topic_type VARCHAR(100) NOT NULL,
